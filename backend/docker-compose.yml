@@ -1,0 +1,167 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: scholar-finder-postgres
+    environment:
+      POSTGRES_USER: scholarfinder
+      POSTGRES_PASSWORD: scholarfinder123
+      POSTGRES_DB: scholarfinder_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - scholar-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scholarfinder -d scholarfinder_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache (for sessions and caching)
+  redis:
+    image: redis:7-alpine
+    container_name: scholar-finder-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - scholar-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Elasticsearch (for search functionality)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: scholar-finder-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - scholar-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Service Discovery - Eureka Server
+  discovery-service:
+    build: ./discovery-service
+    container_name: scholar-finder-discovery
+    ports:
+      - "8761:8761"
+    networks:
+      - scholar-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # API Gateway
+  api-gateway:
+    build: ./api-gateway
+    container_name: scholar-finder-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-service:8761/eureka/
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+    networks:
+      - scholar-network
+
+  # Authentication Service
+  auth-service:
+    build: ./auth-service
+    container_name: scholar-finder-auth
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
+      - SPRING_DATASOURCE_USERNAME=scholarfinder
+      - SPRING_DATASOURCE_PASSWORD=scholarfinder123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-service:8761/eureka/
+      - SPRING_PROFILES_ACTIVE=docker
+      - JWT_SECRET=your-256-bit-secret-key-here-make-it-long-and-secure-for-production
+      - JWT_EXPIRATION=86400000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+    networks:
+      - scholar-network
+
+  # User Service
+  user-service:
+    build: ./user-service
+    container_name: scholar-finder-user
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
+      - SPRING_DATASOURCE_USERNAME=scholarfinder
+      - SPRING_DATASOURCE_PASSWORD=scholarfinder123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-service:8761/eureka/
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+    networks:
+      - scholar-network
+
+  # Scholarship Service
+  scholarship-service:
+    build: ./scholarship-service
+    container_name: scholar-finder-scholarship
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
+      - SPRING_DATASOURCE_USERNAME=scholarfinder
+      - SPRING_DATASOURCE_PASSWORD=scholarfinder123
+      - SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-service:8761/eureka/
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+    networks:
+      - scholar-network
+
+networks:
+  scholar-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  elasticsearch_data:
