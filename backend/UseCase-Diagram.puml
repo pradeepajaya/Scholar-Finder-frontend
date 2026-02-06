@@ -1,0 +1,160 @@
+@startuml Scholar-Finder Use Case Diagram
+
+!theme plain
+skinparam actorStyle awesome
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #f0f8ff
+skinparam usecaseBorderColor #4a90d9
+skinparam actorBackgroundColor #ffe4b5
+
+left to right direction
+
+' ========================================
+' ACTORS
+' ========================================
+actor "Guest" as Guest #lightgray
+actor "Student" as Student #lightgreen
+actor "Institution" as Institution #lightblue
+actor "Admin" as Admin #pink
+
+' ========================================
+' SYSTEM BOUNDARY
+' ========================================
+rectangle "Scholar-Finder System" {
+    
+    ' --- Authentication Package ---
+    package "Authentication" #e8f4e8 {
+        usecase "Register Account" as UC1
+        usecase "Login" as UC2
+        usecase "Logout" as UC3
+        usecase "Reset Password" as UC4
+        usecase "Verify Email" as UC5
+        usecase "Refresh Token" as UC6
+    }
+    
+    ' --- Student Features Package ---
+    package "Student Features" #e8f0f8 {
+        usecase "Create/Edit Profile" as UC10
+        usecase "View Scholarships" as UC11
+        usecase "Search Scholarships" as UC12
+        usecase "Filter Scholarships" as UC13
+        usecase "Apply to Scholarship" as UC14
+        usecase "Track Application Status" as UC15
+        usecase "Save/Bookmark Scholarship" as UC16
+        usecase "Get AI Matching" as UC17
+        usecase "Upload Documents" as UC19
+    }
+    
+    ' --- Institution Features Package ---
+    package "Institution Features" #fff8e8 {
+        usecase "Create Institution Profile" as UC20
+        usecase "Post Scholarship" as UC21
+        usecase "Edit Scholarship" as UC22
+        usecase "Close Scholarship" as UC23
+        usecase "View Applications" as UC24
+        usecase "Review Applications" as UC25
+        usecase "Shortlist Candidates" as UC26
+        usecase "Accept/Reject Applications" as UC27
+        usecase "View Dashboard" as UC28
+    }
+    
+    ' --- Admin Features Package ---
+    package "Admin Features" #f8e8f8 {
+        usecase "Manage Users" as UC30
+        usecase "Verify Institutions" as UC31
+        usecase "Manage Scholarships" as UC32
+        usecase "View Analytics" as UC33
+        usecase "Moderate Content" as UC34
+        usecase "Manage Settings" as UC35
+        usecase "Suspend/Activate Accounts" as UC37
+    }
+    
+    ' --- Public Features Package ---
+    package "Public Features" #f5f5f5 {
+        usecase "Browse Scholarships" as UC40
+        usecase "View Scholarship Details" as UC41
+        usecase "Read News/Blog" as UC42
+        usecase "Contact Support" as UC43
+    }
+}
+
+' ========================================
+' GUEST ASSOCIATIONS
+' ========================================
+Guest --> UC1
+Guest --> UC2
+Guest --> UC40
+Guest --> UC41
+Guest --> UC42
+Guest --> UC43
+
+' ========================================
+' STUDENT ASSOCIATIONS
+' ========================================
+Student --> UC2
+Student --> UC3
+Student --> UC4
+Student --> UC5
+Student --> UC10
+Student --> UC11
+Student --> UC12
+Student --> UC13
+Student --> UC14
+Student --> UC15
+Student --> UC16
+Student --> UC17
+Student --> UC40
+Student --> UC41
+
+' ========================================
+' INSTITUTION ASSOCIATIONS
+' ========================================
+Institution --> UC2
+Institution --> UC3
+Institution --> UC4
+Institution --> UC20
+Institution --> UC21
+Institution --> UC22
+Institution --> UC23
+Institution --> UC24
+Institution --> UC25
+Institution --> UC26
+Institution --> UC27
+Institution --> UC28
+
+' ========================================
+' ADMIN ASSOCIATIONS
+' ========================================
+Admin --> UC2
+Admin --> UC3
+Admin --> UC30
+Admin --> UC31
+Admin --> UC32
+Admin --> UC33
+Admin --> UC34
+Admin --> UC35
+Admin --> UC37
+
+' ========================================
+' INCLUDE RELATIONSHIPS
+' ========================================
+UC14 ..> UC19 : <<include>>
+UC14 ..> UC10 : <<include>>
+UC25 ..> UC26 : <<include>>
+UC25 ..> UC27 : <<include>>
+
+' ========================================
+' EXTEND RELATIONSHIPS
+' ========================================
+UC6 ..> UC2 : <<extend>>
+UC12 ..> UC11 : <<extend>>
+UC13 ..> UC11 : <<extend>>
+
+' ========================================
+' GENERALIZATION (Inheritance)
+' ========================================
+Student --|> Guest
+Institution --|> Guest
+Admin --|> Guest
+
+@enduml

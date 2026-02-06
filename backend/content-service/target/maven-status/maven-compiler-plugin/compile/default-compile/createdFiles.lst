@@ -1,0 +1,15 @@
+com\scholarfinder\content\entity\Tag.class
+com\scholarfinder\content\dto\TagDto$TagDtoBuilder.class
+com\scholarfinder\content\entity\Category.class
+com\scholarfinder\content\dto\NewsRequest.class
+com\scholarfinder\content\entity\Category$CategoryBuilder.class
+com\scholarfinder\content\dto\TagDto.class
+com\scholarfinder\content\dto\NewsRequest$NewsRequestBuilder.class
+com\scholarfinder\content\dto\ApiResponse.class
+com\scholarfinder\content\dto\ApiResponse$ApiResponseBuilder.class
+com\scholarfinder\content\entity\Tag$TagBuilder.class
+com\scholarfinder\content\entity\News.class
+com\scholarfinder\content\repository\TagRepository.class
+com\scholarfinder\content\entity\News$NewsBuilder.class
+com\scholarfinder\content\controller\CategoryController.class
+com\scholarfinder\content\service\TagService.class

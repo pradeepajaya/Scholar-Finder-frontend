@@ -1,0 +1,84 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: notification-service
+  
+  datasource:
+    url: jdbc:postgresql://localhost:5432/scholarfinder_db
+    username: scholarfinder
+    password: scholarfinder123
+    driver-class-name: org.postgresql.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: notifications
+        format_sql: true
+    show-sql: false
+  
+  # Email Configuration (using Mailtrap for development)
+  mail:
+    host: ${MAIL_HOST:sandbox.smtp.mailtrap.io}
+    port: ${MAIL_PORT:2525}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+        transport:
+          protocol: smtp
+    default-encoding: UTF-8
+
+# Eureka Client Configuration
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka:eureka123@localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+# Management Endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+# Logging
+logging:
+  level:
+    com.scholarfinder: DEBUG
+    org.springframework.mail: DEBUG
+
+# Application specific configuration
+app:
+  mail:
+    from: noreply@scholarfinder.lk
+    admin-email: admin@scholarfinder.lk
+    support-email: support@scholarfinder.lk
+
+---
+# Docker Profile
+spring:
+  config:
+    activate:
+      on-profile: docker
+  
+  datasource:
+    url: jdbc:postgresql://postgres:5432/scholarfinder_db
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka:eureka123@discovery-service:8761/eureka/
