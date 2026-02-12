@@ -61,6 +61,22 @@ spring:
             - Path=/api/scholarships/**, /api/applications/**
           filters:
             - RewritePath=/api/(?<segment>.*), /api/${segment}
+        
+        # Content Service (News & Blogs)
+        - id: content-service
+          uri: lb://content-service
+          predicates:
+            - Path=/api/news/**, /api/blogs/**, /api/categories/**, /api/tags/**
+          filters:
+            - RewritePath=/api/(?<segment>.*), /api/${segment}
+        
+        # Notification Service (Contact & Notifications)
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/contact/**
+          filters:
+            - RewritePath=/api/(?<segment>.*), /api/${segment}
 
 # Eureka Client Configuration
 eureka:
