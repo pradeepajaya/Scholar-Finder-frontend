@@ -2,7 +2,9 @@ package com.scholarfinder.content.service;
 
 import com.scholarfinder.content.dto.BlogPostDto;
 import com.scholarfinder.content.dto.BlogPostRequest;
+import com.scholarfinder.content.dto.CategoryDto;
 import com.scholarfinder.content.dto.PagedResponse;
+import com.scholarfinder.content.dto.TagDto;
 import com.scholarfinder.content.entity.BlogPost;
 import com.scholarfinder.content.entity.Category;
 import com.scholarfinder.content.entity.Tag;
@@ -65,7 +67,8 @@ public class BlogPostService {
      * Update an existing blog post.
      */
     public BlogPostDto updateBlogPost(Long id, BlogPostRequest request) {
-        BlogPost blogPost = blogPostRepository.findById(id)
+        Long blogPostId = requireId(id, "Blog post");
+        BlogPost blogPost = blogPostRepository.findById(blogPostId)
             .orElseThrow(() -> new EntityNotFoundException("Blog post not found with id: " + id));
         
         // Track old tags to update usage counts
@@ -97,7 +100,8 @@ public class BlogPostService {
      */
     @Transactional(readOnly = true)
     public BlogPostDto getBlogPostById(Long id) {
-        BlogPost blogPost = blogPostRepository.findById(id)
+        Long blogPostId = requireId(id, "Blog post");
+        BlogPost blogPost = blogPostRepository.findById(blogPostId)
             .orElseThrow(() -> new EntityNotFoundException("Blog post not found with id: " + id));
         return mapToDto(blogPost);
     }
@@ -149,8 +153,9 @@ public class BlogPostService {
      */
     @Transactional(readOnly = true)
     public PagedResponse<BlogPostDto> getBlogPostsByCategory(Long categoryId, int page, int size) {
+        Long safeCategoryId = requireId(categoryId, "Category");
         Pageable pageable = PageRequest.of(page, size);
-        Page<BlogPost> blogPostPage = blogPostRepository.findByCategory(categoryId, pageable);
+        Page<BlogPost> blogPostPage = blogPostRepository.findByCategory(safeCategoryId, pageable);
         return createPagedResponse(blogPostPage);
     }
 
@@ -159,8 +164,9 @@ public class BlogPostService {
      */
     @Transactional(readOnly = true)
     public PagedResponse<BlogPostDto> getBlogPostsByTag(Long tagId, int page, int size) {
+        Long safeTagId = requireId(tagId, "Tag");
         Pageable pageable = PageRequest.of(page, size);
-        Page<BlogPost> blogPostPage = blogPostRepository.findByTag(tagId, pageable);
+        Page<BlogPost> blogPostPage = blogPostRepository.findByTag(safeTagId, pageable);
         return createPagedResponse(blogPostPage);
     }
 
@@ -189,7 +195,8 @@ public class BlogPostService {
      * Publish a blog post.
      */
     public BlogPostDto publishBlogPost(Long id) {
-        BlogPost blogPost = blogPostRepository.findById(id)
+        Long blogPostId = requireId(id, "Blog post");
+        BlogPost blogPost = blogPostRepository.findById(blogPostId)
             .orElseThrow(() -> new EntityNotFoundException("Blog post not found with id: " + id));
         
         blogPost.setStatus("PUBLISHED");
@@ -203,7 +210,8 @@ public class BlogPostService {
      * Archive a blog post.
      */
     public BlogPostDto archiveBlogPost(Long id) {
-        BlogPost blogPost = blogPostRepository.findById(id)
+        Long blogPostId = requireId(id, "Blog post");
+        BlogPost blogPost = blogPostRepository.findById(blogPostId)
             .orElseThrow(() -> new EntityNotFoundException("Blog post not found with id: " + id));
         
         blogPost.setStatus("ARCHIVED");
@@ -216,7 +224,8 @@ public class BlogPostService {
      * Delete a blog post.
      */
     public void deleteBlogPost(Long id) {
-        BlogPost blogPost = blogPostRepository.findById(id)
+        Long blogPostId = requireId(id, "Blog post");
+        BlogPost blogPost = blogPostRepository.findById(blogPostId)
             .orElseThrow(() -> new EntityNotFoundException("Blog post not found with id: " + id));
         
         // Decrement tag usage counts
@@ -224,14 +233,15 @@ public class BlogPostService {
             blogPost.getTags().forEach(tag -> tagRepository.decrementUsageCount(tag.getId()));
         }
         
-        blogPostRepository.deleteById(id);
+        blogPostRepository.deleteById(blogPostId);
     }
 
     /**
      * Set blog post as featured.
      */
     public BlogPostDto setFeatured(Long id, boolean featured) {
-        BlogPost blogPost = blogPostRepository.findById(id)
+        Long blogPostId = requireId(id, "Blog post");
+        BlogPost blogPost = blogPostRepository.findById(blogPostId)
             .orElseThrow(() -> new EntityNotFoundException("Blog post not found with id: " + id));
         
         blogPost.setIsFeatured(featured);
@@ -243,10 +253,11 @@ public class BlogPostService {
      * Like a blog post.
      */
     public void likeBlogPost(Long id) {
-        if (!blogPostRepository.existsById(id)) {
+        Long blogPostId = requireId(id, "Blog post");
+        if (!blogPostRepository.existsById(blogPostId)) {
             throw new EntityNotFoundException("Blog post not found with id: " + id);
         }
-        blogPostRepository.incrementLikeCount(id);
+        blogPostRepository.incrementLikeCount(blogPostId);
     }
 
     // Helper methods
@@ -256,16 +267,17 @@ public class BlogPostService {
         blogPost.setExcerpt(request.getExcerpt());
         blogPost.setContent(request.getContent());
         blogPost.setFeaturedImage(request.getFeaturedImage());
-        blogPost.setIsFeatured(request.getIsFeatured() != null ? request.getIsFeatured() : false);
-        blogPost.setAllowComments(request.getAllowComments() != null ? request.getAllowComments() : true);
-        blogPost.setReadingTimeMinutes(calculateReadingTime(request.getContent()));
+        blogPost.setIsFeatured(Boolean.TRUE.equals(request.getIsFeatured()));
+        blogPost.setAllowComments(request.getAllowComments() == null ? Boolean.TRUE : request.getAllowComments());
+        blogPost.setReadingTime(calculateReadingTime(request.getContent()));
         blogPost.setMetaTitle(request.getMetaTitle());
         blogPost.setMetaDescription(request.getMetaDescription());
 
         // Set category
-        if (request.getCategoryId() != null) {
-            Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new EntityNotFoundException("Category not found with id: " + request.getCategoryId()));
+        Long categoryId = request.getCategoryId();
+        if (categoryId != null) {
+            Category category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new EntityNotFoundException("Category not found with id: " + categoryId));
             blogPost.setCategory(category);
         }
 
@@ -291,7 +303,7 @@ public class BlogPostService {
         dto.setViewsCount(blogPost.getViewsCount());
         dto.setLikesCount(blogPost.getLikesCount());
         dto.setCommentsCount(blogPost.getCommentsCount());
-        dto.setReadingTimeMinutes(blogPost.getReadingTimeMinutes());
+        dto.setReadingTime(blogPost.getReadingTime());
         dto.setPublishedAt(blogPost.getPublishedAt());
         dto.setCreatedAt(blogPost.getCreatedAt());
         dto.setUpdatedAt(blogPost.getUpdatedAt());
@@ -299,13 +311,24 @@ public class BlogPostService {
         dto.setMetaDescription(blogPost.getMetaDescription());
 
         if (blogPost.getCategory() != null) {
-            dto.setCategoryId(blogPost.getCategory().getId());
-            dto.setCategoryName(blogPost.getCategory().getName());
+            CategoryDto categoryDto = new CategoryDto();
+            categoryDto.setId(blogPost.getCategory().getId());
+            categoryDto.setName(blogPost.getCategory().getName());
+            categoryDto.setSlug(blogPost.getCategory().getSlug());
+            dto.setCategory(categoryDto);
         }
 
         if (blogPost.getTags() != null) {
-            dto.setTagIds(blogPost.getTags().stream().map(Tag::getId).collect(Collectors.toList()));
-            dto.setTagNames(blogPost.getTags().stream().map(Tag::getName).collect(Collectors.toList()));
+            List<TagDto> tagDtos = blogPost.getTags().stream()
+                .map(tag -> {
+                    TagDto tagDto = new TagDto();
+                    tagDto.setId(tag.getId());
+                    tagDto.setName(tag.getName());
+                    tagDto.setSlug(tag.getSlug());
+                    return tagDto;
+                })
+                .collect(Collectors.toList());
+            dto.setTags(tagDtos);
         }
 
         return dto;
@@ -323,7 +346,9 @@ public class BlogPostService {
             page.getTotalElements(),
             page.getTotalPages(),
             page.isFirst(),
-            page.isLast()
+            page.isLast(),
+            page.hasNext(),
+            page.hasPrevious()
         );
     }
 
@@ -352,5 +377,12 @@ public class BlogPostService {
         int wordCount = content.split("\\s+").length;
         int readingTime = (int) Math.ceil(wordCount / 200.0);
         return Math.max(1, readingTime);
+    }
+
+    private Long requireId(Long id, String label) {
+        if (id == null) {
+            throw new IllegalArgumentException(label + " id is required");
+        }
+        return id;
     }
 }

@@ -162,95 +162,7 @@ CREATE TABLE IF NOT EXISTS users.admin_profiles (
 
 -- =====================================================
 -- SCHOLARSHIPS SCHEMA - Scholarship related tables
-// Example pseudo-code for a MatchingService
-public class MatchingService {
-    
-    public MatchResult calculateMatch(StudentProfile student, Scholarship scholarship) {
-        List<String> matched = new ArrayList<>();
-        List<String> unmatched = new ArrayList<>();
-        
-        // 1. Check education level
-        if (scholarship.getEligibleLevels().contains(student.getIntendedLevel())) {
-            matched.add("Education level matches");
-        } else {
-            unmatched.add("Required: " + scholarship.getEligibleLevels());
-        }
-        
-        // 2. Check age
-        int age = calculateAge(student.getDateOfBirth());
-        if (age >= scholarship.getMinAge() && age <= scholarship.getMaxAge()) {
-            matched.add("Age requirement met");
-        } else {
-            unmatched.add("Age must be " + scholarship.getMinAge() + "-" + scholarship.getMaxAge());
-        }
-        
-        // 3. Check English score
-        if (student.getOverallScore() >= scholarship.getMinEnglishScore()) {
-            matched.add("English proficiency met");
-        } else {
-            unmatched.add("Requires " + scholarship.getMinEnglishScore() + " " + scholarship.getRequiredEnglishTest());
-        }
-        
-        // 4. Check preferred countries
-        if (student.getPreferredCountries().contains(scholarship.getCountry())) {
-            matched.add("Preferred country");
-        }
-        
-        // 5. Check financial need (if applicable)
-        // 6. Check citizenship
-        // ... more criteria
-        
-        // Calculate percentage
-        int total = matched.size() + unmatched.size();
-        double percentage = (matched.size() / (double) total) * 100;
-        
-        return new MatchResult(percentage, matched, unmatched);
-    }
-}// Example pseudo-code for a MatchingService
-public class MatchingService {
-    
-    public MatchResult calculateMatch(StudentProfile student, Scholarship scholarship) {
-        List<String> matched = new ArrayList<>();
-        List<String> unmatched = new ArrayList<>();
-        
-        // 1. Check education level
-        if (scholarship.getEligibleLevels().contains(student.getIntendedLevel())) {
-            matched.add("Education level matches");
-        } else {
-            unmatched.add("Required: " + scholarship.getEligibleLevels());
-        }
-        
-        // 2. Check age
-        int age = calculateAge(student.getDateOfBirth());
-        if (age >= scholarship.getMinAge() && age <= scholarship.getMaxAge()) {
-            matched.add("Age requirement met");
-        } else {
-            unmatched.add("Age must be " + scholarship.getMinAge() + "-" + scholarship.getMaxAge());
-        }
-        
-        // 3. Check English score
-        if (student.getOverallScore() >= scholarship.getMinEnglishScore()) {
-            matched.add("English proficiency met");
-        } else {
-            unmatched.add("Requires " + scholarship.getMinEnglishScore() + " " + scholarship.getRequiredEnglishTest());
-        }
-        
-        // 4. Check preferred countries
-        if (student.getPreferredCountries().contains(scholarship.getCountry())) {
-            matched.add("Preferred country");
-        }
-        
-        // 5. Check financial need (if applicable)
-        // 6. Check citizenship
-        // ... more criteria
-        
-        // Calculate percentage
-        int total = matched.size() + unmatched.size();
-        double percentage = (matched.size() / (double) total) * 100;
-        
-        return new MatchResult(percentage, matched, unmatched);
-    }
-}-- =====================================================
+-- =====================================================
 
 -- Scholarships table
 CREATE TABLE IF NOT EXISTS scholarships.scholarships (
@@ -419,11 +331,110 @@ CREATE TABLE IF NOT EXISTS content.news_tags (
 );
 
 -- Blog-Tags junction table
-CREATE TABLE IF NOT EXISTS content.blog_tags (
+CREATE TABLE IF NOT EXISTS content.blog_post_tags (
     blog_post_id BIGINT NOT NULL REFERENCES content.blog_posts(id) ON DELETE CASCADE,
     tag_id BIGINT NOT NULL REFERENCES content.tags(id) ON DELETE CASCADE,
     PRIMARY KEY (blog_post_id, tag_id)
 );
+
+-- Seed content categories
+INSERT INTO content.categories (name, slug, description, content_type, display_order, is_active)
+VALUES
+    ('Scholarship News', 'scholarship-news', 'Announcements and deadlines for scholarships.', 'NEWS', 1, TRUE),
+    ('Student Guides', 'student-guides', 'Guides and tips for applicants.', 'BLOG', 2, TRUE)
+ON CONFLICT (slug) DO NOTHING;
+
+-- Seed news articles
+INSERT INTO content.news (
+    title,
+    slug,
+    summary,
+    content,
+    author_id,
+    category_id,
+    status,
+    views_count,
+    published_at,
+    created_at,
+    updated_at,
+    source_url
+)
+VALUES
+    (
+        'New Scholarship Opportunities for 2026',
+        'new-scholarship-opportunities-for-2026',
+        'A roundup of new scholarships opening in 2026 with key deadlines and eligibility.',
+        'This update highlights new scholarship opportunities for local and international students. It includes application windows, required documents, and official announcement links. Review eligibility carefully and submit early.',
+        1,
+        (SELECT id FROM content.categories WHERE slug = 'scholarship-news'),
+        'PUBLISHED',
+        1245,
+        '2026-01-15 09:00:00',
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP,
+        'https://example.com/docs/scholarship-opportunities-2026.pdf'
+    ),
+    (
+        'Upcoming Scholarship Deadlines',
+        'upcoming-scholarship-deadlines',
+        'Draft list of upcoming scholarship deadlines for the next quarter.',
+        'This draft compiles upcoming deadlines by region and field of study. Verify dates against official sources before publishing.',
+        1,
+        (SELECT id FROM content.categories WHERE slug = 'scholarship-news'),
+        'DRAFT',
+        0,
+        NULL,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP,
+        NULL
+    )
+ON CONFLICT (slug) DO NOTHING;
+
+-- Seed blog posts
+INSERT INTO content.blog_posts (
+    title,
+    slug,
+    excerpt,
+    content,
+    author_id,
+    category_id,
+    status,
+    views_count,
+    reading_time_minutes,
+    published_at,
+    created_at,
+    updated_at
+)
+VALUES
+    (
+        'How to Write a Winning Scholarship Application',
+        'how-to-write-a-winning-scholarship-application',
+        'Practical tips for writing personal statements, organizing documents, and meeting deadlines.',
+        'Strong applications focus on clarity, evidence, and alignment with scholarship goals. This guide covers structuring a personal statement, collecting recommendations, and avoiding common mistakes.',
+        1,
+        (SELECT id FROM content.categories WHERE slug = 'student-guides'),
+        'PUBLISHED',
+        987,
+        4,
+        '2026-01-12 09:00:00',
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+    ),
+    (
+        'Tips for A/L Students Seeking Higher Education',
+        'tips-for-al-students-seeking-higher-education',
+        'Planning advice for A/L students preparing applications and selecting programs.',
+        'Start early by mapping application calendars, shortlisting programs, and preparing documents. Keep a checklist of transcripts, exam results, and ID documents.',
+        1,
+        (SELECT id FROM content.categories WHERE slug = 'student-guides'),
+        'PUBLISHED',
+        1532,
+        5,
+        '2026-01-10 09:00:00',
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+    )
+ON CONFLICT (slug) DO NOTHING;
 
 -- =====================================================
 -- NOTIFICATIONS SCHEMA - Contact and notification tables

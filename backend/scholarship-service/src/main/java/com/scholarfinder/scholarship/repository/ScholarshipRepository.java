@@ -26,7 +26,7 @@ public interface ScholarshipRepository extends JpaRepository<Scholarship, Long> 
     /**
      * Find scholarships matching education level.
      */
-    @Query("SELECT s FROM Scholarship s WHERE s.status = 'ACTIVE' AND :level = ANY(s.eligibleLevels) AND s.applicationDeadline >= :today")
+    @Query(value = "SELECT * FROM scholarships.scholarships s WHERE s.status = 'ACTIVE' AND :level = ANY(s.eligible_levels) AND s.application_deadline >= :today", nativeQuery = true)
     List<Scholarship> findByEducationLevel(@Param("level") String level, @Param("today") LocalDate today);
 
     /**
@@ -38,7 +38,7 @@ public interface ScholarshipRepository extends JpaRepository<Scholarship, Long> 
     /**
      * Find scholarships by country.
      */
-    @Query("SELECT s FROM Scholarship s WHERE s.status = 'ACTIVE' AND :country = ANY(s.eligibleCountries) AND s.applicationDeadline >= :today")
+    @Query(value = "SELECT * FROM scholarships.scholarships s WHERE s.status = 'ACTIVE' AND :country = ANY(s.eligible_countries) AND s.application_deadline >= :today", nativeQuery = true)
     List<Scholarship> findByCountry(@Param("country") String country, @Param("today") LocalDate today);
 
     /**

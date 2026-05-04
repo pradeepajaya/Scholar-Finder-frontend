@@ -135,8 +135,8 @@ public class CategoryService {
     private void mapToEntity(CategoryDto dto, Category category) {
         category.setName(dto.getName());
         category.setDescription(dto.getDescription());
-        category.setIcon(dto.getIcon());
-        category.setColor(dto.getColor());
+        category.setIconName(dto.getIconName());
+        category.setColorHex(dto.getColorHex());
         category.setContentType(dto.getContentType() != null ? dto.getContentType() : "BOTH");
         category.setDisplayOrder(dto.getDisplayOrder() != null ? dto.getDisplayOrder() : 0);
         category.setIsActive(dto.getIsActive() != null ? dto.getIsActive() : true);
@@ -156,8 +156,8 @@ public class CategoryService {
         dto.setName(category.getName());
         dto.setSlug(category.getSlug());
         dto.setDescription(category.getDescription());
-        dto.setIcon(category.getIcon());
-        dto.setColor(category.getColor());
+        dto.setIconName(category.getIconName());
+        dto.setColorHex(category.getColorHex());
         dto.setContentType(category.getContentType());
         dto.setDisplayOrder(category.getDisplayOrder());
         dto.setIsActive(category.getIsActive());

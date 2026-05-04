@@ -163,7 +163,10 @@ export function Navbar({
 
                   {/* Dropdown Menu */}
                   {loginDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl shadow-slate-300/50 border border-slate-200 py-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div
+                      className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl shadow-slate-300/50 border border-slate-200 py-3 animate-in fade-in slide-in-from-top-2 duration-200"
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
                       <p className="px-4 pb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
                         Login As
                       </p>

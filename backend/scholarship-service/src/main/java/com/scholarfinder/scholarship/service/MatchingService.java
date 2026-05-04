@@ -104,7 +104,7 @@ public class MatchingService {
             .unmatchedCriteria(unmatchedCriteria)
             .breakdown(breakdown)
             .eligible(eligibility.isEligible())
-            .ineligibilityReason(eligibility.getReason())
+            .ineligibilityReason(eligibility.reason())
             .build();
     }
 
