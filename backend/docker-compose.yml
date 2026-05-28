@@ -53,9 +53,10 @@ services:
       - scholar-network
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
 
   # Service Discovery - Eureka Server
   discovery-service:
@@ -101,6 +102,8 @@ services:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka:eureka123@discovery-service:8761/eureka/
       - SPRING_PROFILES_ACTIVE=docker
       - JWT_SECRET=your-256-bit-secret-key-here-make-it-long-and-secure-for-production
+      # JWT secret must be base64-encoded for the JwtTokenProvider (or use a raw key handled by the app)
+      - JWT_SECRET=c3VwZXJzZWNyZXRrZXlzdXBlcnNlY3JldGtleTEyMzQ1Ng==
       - JWT_EXPIRATION=86400000
     depends_on:
       postgres:

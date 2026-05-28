@@ -2,19 +2,16 @@ import { motion } from "framer-motion";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { Avatar, AvatarFallback } from "./ui/avatar";
 import {
-  GraduationCap,
-  MapPin,
   Award,
-  Facebook,
-  Linkedin,
-  ExternalLink,
+  CheckCircle,
+  GraduationCap,
+  Loader,
   Plus,
   Send,
-  CheckCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
@@ -26,102 +23,26 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
-import { toast } from "sonner@2.0.3";
+import apiClient from "../services/api";
 
-const previousScholars = [
-  {
-    id: 1,
-    name: "Nimali Perera",
-    scholarship: "Commonwealth Master's Scholarship",
-    year: "2023",
-    field: "Computer Science",
-    university: "University of Cambridge",
-    country: "United Kingdom",
-    currentRole: "AI Research Scientist at DeepMind",
-    image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200",
-    facebook: "https://facebook.com/nimali.perera",
-    linkedin: "https://linkedin.com/in/nimali-perera",
-    testimonial:
-      "The Commonwealth Scholarship opened doors I never imagined. It wasn't just about the education - it was about the network, the exposure, and the confidence to pursue my dreams.",
-  },
-  {
-    id: 2,
-    name: "Kasun Bandara",
-    scholarship: "Australia Awards Scholarship",
-    year: "2022",
-    field: "Environmental Engineering",
-    university: "University of Melbourne",
-    country: "Australia",
-    currentRole: "Senior Environmental Consultant, Ministry of Environment",
-    image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200",
-    facebook: "https://facebook.com/kasun.bandara",
-    linkedin: "https://linkedin.com/in/kasun-bandara",
-    testimonial:
-      "Returning to Sri Lanka after my Master's was the best decision. I'm now using everything I learned to make a real impact on environmental policy.",
-  },
-  {
-    id: 3,
-    name: "Thilini Jayawardena",
-    scholarship: "Fulbright Scholarship",
-    year: "2024",
-    field: "Public Health",
-    university: "Johns Hopkins University",
-    country: "United States",
-    currentRole: "PhD Candidate & Research Assistant",
-    image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200",
-    facebook: "https://facebook.com/thilini.j",
-    linkedin: "https://linkedin.com/in/thilini-jayawardena",
-    testimonial:
-      "Fulbright gave me more than funding - it gave me a platform to conduct research that matters. I'm working on healthcare solutions for underserved communities.",
-  },
-  {
-    id: 4,
-    name: "Ravindu Silva",
-    scholarship: "DAAD Master's Scholarship",
-    year: "2023",
-    field: "Mechanical Engineering",
-    university: "Technical University of Munich",
-    country: "Germany",
-    currentRole: "Automotive Engineer at BMW",
-    image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200",
-    facebook: "https://facebook.com/ravindu.silva",
-    linkedin: "https://linkedin.com/in/ravindu-silva",
-    testimonial:
-      "The DAAD scholarship was life-changing. The German education system and industry connections helped me land my dream job in automotive engineering.",
-  },
-  {
-    id: 5,
-    name: "Sachini Fernando",
-    scholarship: "Chevening Scholarship",
-    year: "2021",
-    field: "International Relations",
-    university: "London School of Economics",
-    country: "United Kingdom",
-    currentRole: "Foreign Service Officer, Ministry of Foreign Affairs",
-    image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200",
-    facebook: "https://facebook.com/sachini.fernando",
-    linkedin: "https://linkedin.com/in/sachini-fernando",
-    testimonial:
-      "Chevening connected me with future leaders from around the world. The network I built continues to be invaluable in my diplomatic career.",
-  },
-  {
-    id: 6,
-    name: "Dinesh Rajapaksa",
-    scholarship: "Japanese Government (MEXT) Scholarship",
-    year: "2022",
-    field: "Robotics",
-    university: "University of Tokyo",
-    country: "Japan",
-    currentRole: "Robotics Engineer & PhD Researcher",
-    image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200",
-    facebook: "https://facebook.com/dinesh.r",
-    linkedin: "https://linkedin.com/in/dinesh-rajapaksa",
-    testimonial:
-      "The MEXT scholarship gave me access to cutting-edge robotics research. Japan's technology ecosystem is unparalleled and I'm grateful for this opportunity.",
-  },
-];
+interface Testimonial {
+  id: number;
+  scholarName: string | null;
+  scholarshipName: string;
+  yearCompleted: number | null;
+  fieldOfStudy: string | null;
+  university: string | null;
+  testimonialText: string;
+  rating: number | null;
+  isAnonymous: boolean;
+  isFeatured: boolean;
+  status: string;
+  createdAt: string;
+}
 
 export function PreviousScholars() {
+  const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -130,15 +51,28 @@ export function PreviousScholars() {
     year: "",
     field: "",
     university: "",
-    country: "",
-    currentRole: "",
     email: "",
-    facebook: "",
-    linkedin: "",
+    isAnonymous: false,
     testimonial: "",
   });
 
-  const handleInputChange = (field: string, value: string) => {
+  useEffect(() => {
+    const fetchTestimonials = async () => {
+      try {
+        const payload = await apiClient.get<Testimonial[]>("/testimonials");
+        setTestimonials(payload.data ?? []);
+      } catch (error) {
+        console.error("Failed to fetch testimonials:", error);
+        setTestimonials([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchTestimonials();
+  }, []);
+
+  const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -146,31 +80,27 @@ export function PreviousScholars() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Simulate sending to admin for review
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setIsDialogOpen(false);
-      toast.success("Success Story Submitted!", {
-        description:
-          "Your story has been sent to our admin team for review. We'll notify you once it's approved.",
-        duration: 5000,
-      });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
 
-      // Reset form
+      setIsDialogOpen(false);
+      window.alert("Success story submitted for admin review.");
+
       setFormData({
         name: "",
         scholarship: "",
         year: "",
         field: "",
         university: "",
-        country: "",
-        currentRole: "",
         email: "",
-        facebook: "",
-        linkedin: "",
+        isAnonymous: false,
         testimonial: "",
       });
-    }, 2000);
+    } catch {
+      window.alert("Failed to submit your story. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -183,11 +113,11 @@ export function PreviousScholars() {
             </h2>
             <p className="text-slate-600">
               Meet our scholars who have achieved their dreams through
-              scholarships and are now making a difference
+              scholarships. Most choose to share anonymously to protect their
+              privacy while inspiring others.
             </p>
           </div>
 
-          {/* Share Your Story Button */}
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg">
@@ -201,8 +131,9 @@ export function PreviousScholars() {
                   Share Your Success Story
                 </DialogTitle>
                 <DialogDescription>
-                  Inspire future scholars by sharing your journey. Your story
-                  will be reviewed by our admin team before publishing.
+                  Inspire future scholars by sharing your journey. You can
+                  choose to share anonymously to protect your privacy. Your
+                  story will be reviewed by our admin team before publishing.
                 </DialogDescription>
               </DialogHeader>
 
@@ -210,7 +141,7 @@ export function PreviousScholars() {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <p className="text-sm text-blue-900">
                     <strong>Note:</strong> All submissions are reviewed by our
-                    admin team to ensure quality and authenticity. You'll
+                    admin team to ensure quality and authenticity. You will
                     receive an email notification once your story is approved.
                   </p>
                 </div>
@@ -253,6 +184,23 @@ export function PreviousScholars() {
                   </div>
                 </div>
 
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.isAnonymous}
+                      onChange={(e) =>
+                        handleInputChange("isAnonymous", e.target.checked)
+                      }
+                      className="w-4 h-4 rounded border-amber-300"
+                    />
+                    <span className="text-sm font-medium text-amber-900">
+                      Share anonymously (your name will not be displayed
+                      publicly, but we will use it for admin communication)
+                    </span>
+                  </label>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="scholarship">
@@ -272,10 +220,11 @@ export function PreviousScholars() {
 
                   <div>
                     <Label htmlFor="year">
-                      Year Received <span className="text-red-500">*</span>
+                      Year Completed <span className="text-red-500">*</span>
                     </Label>
                     <Input
                       id="year"
+                      type="number"
                       required
                       value={formData.year}
                       onChange={(e) =>
@@ -321,41 +270,6 @@ export function PreviousScholars() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="country">
-                      Country <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="country"
-                      required
-                      value={formData.country}
-                      onChange={(e) =>
-                        handleInputChange("country", e.target.value)
-                      }
-                      placeholder="e.g., United Kingdom"
-                      className="mt-1.5"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="currentRole">
-                      Current Role/Position{" "}
-                      <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="currentRole"
-                      required
-                      value={formData.currentRole}
-                      onChange={(e) =>
-                        handleInputChange("currentRole", e.target.value)
-                      }
-                      placeholder="e.g., AI Research Scientist at DeepMind"
-                      className="mt-1.5"
-                    />
-                  </div>
-                </div>
-
                 <div>
                   <Label htmlFor="testimonial">
                     Your Story & Testimonial{" "}
@@ -368,46 +282,12 @@ export function PreviousScholars() {
                     onChange={(e) =>
                       handleInputChange("testimonial", e.target.value)
                     }
-                    placeholder="Share your scholarship journey, what it meant to you, and how it has impacted your career..."
-                    className="mt-1.5 min-h-[120px]"
+                    placeholder="Share your scholarship journey, what it meant to you, and the impact it had on your career..."
+                    className="mt-1.5 min-h-[150px]"
                   />
                   <p className="text-xs text-slate-500 mt-1">
-                    Minimum 100 characters
+                    Minimum 100 characters - be specific about your experience
                   </p>
-                </div>
-
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold text-slate-900 mb-3">
-                    Social Media Links (Optional)
-                  </h4>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="facebook">Facebook Profile</Label>
-                      <Input
-                        id="facebook"
-                        value={formData.facebook}
-                        onChange={(e) =>
-                          handleInputChange("facebook", e.target.value)
-                        }
-                        placeholder="https://facebook.com/yourprofile"
-                        className="mt-1.5"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="linkedin">LinkedIn Profile</Label>
-                      <Input
-                        id="linkedin"
-                        value={formData.linkedin}
-                        onChange={(e) =>
-                          handleInputChange("linkedin", e.target.value)
-                        }
-                        placeholder="https://linkedin.com/in/yourprofile"
-                        className="mt-1.5"
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 <div className="flex gap-3 pt-4">
@@ -451,159 +331,122 @@ export function PreviousScholars() {
           </Dialog>
         </div>
 
-        {/* Info Banner */}
         <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
           <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-green-900">
             <p className="font-medium">Are you a scholarship recipient?</p>
             <p className="text-green-800">
               Share your success story to inspire and guide future scholars on
-              their journey!
+              their journey! You can share anonymously to protect your privacy.
             </p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {previousScholars.map((scholar, index) => (
-          <motion.div
-            key={scholar.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: index * 0.1 }}
-          >
-            <Card className="overflow-hidden h-full hover:shadow-lg transition-shadow">
-              <div className="p-6 bg-[rgba(15,140,252,0.12)]">
-                {/* Header */}
-                <div className="flex items-start gap-4 mb-4">
-                  <Avatar className="w-16 h-16">
-                    <AvatarImage src={scholar.image} alt={scholar.name} />
-                    <AvatarFallback>
-                      {scholar.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-slate-900">
-                      {scholar.name}
-                    </h3>
-                    <p className="text-sm text-slate-600">
-                      {scholar.currentRole}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      ) : testimonials.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-slate-600 mb-4">
+            No testimonials yet. Be the first to share your success story!
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {testimonials.map((testimonial, index) => (
+            <motion.div
+              key={testimonial.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: index * 0.1 }}
+            >
+              <Card className="overflow-hidden h-full hover:shadow-lg transition-shadow">
+                <div className="p-6 bg-[rgba(15,140,252,0.12)]">
+                  <div className="flex items-start gap-4 mb-4">
+                    <Avatar className="w-16 h-16">
+                      <AvatarFallback className="bg-blue-600 text-white text-lg font-bold">
+                        {testimonial.isAnonymous
+                          ? "AS"
+                          : testimonial.scholarName
+                              ?.split(" ")
+                              .map((n) => n[0])
+                              .join("") || "?"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-slate-900">
+                        {testimonial.isAnonymous
+                          ? "Anonymous Scholar"
+                          : testimonial.scholarName || "Scholar"}
+                      </h3>
+                      {!!testimonial.rating && (
+                        <div className="flex gap-0.5 mt-2">
+                          {Array.from({ length: testimonial.rating }).map(
+                            (_, i) => (
+                              <span key={i} className="text-yellow-400 text-sm">
+                                ★
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-[rgb(255,255,255)] rounded-lg p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Award className="w-4 h-4 text-blue-600" />
+                      <span className="font-semibold text-blue-900">
+                        {testimonial.scholarshipName}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm text-slate-700">
+                      {!!testimonial.yearCompleted && (
+                        <div>
+                          <span className="text-slate-500">Year:</span>{" "}
+                          {testimonial.yearCompleted}
+                        </div>
+                      )}
+                      {!!testimonial.fieldOfStudy && (
+                        <div>
+                          <span className="text-slate-500">Field:</span>{" "}
+                          {testimonial.fieldOfStudy}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {!!testimonial.university && (
+                    <div className="flex items-start gap-2 mb-3 text-sm bg-[rgb(255,255,255)] rounded-[10px] p-3">
+                      <GraduationCap className="w-4 h-4 text-slate-400 mt-0.5" />
+                      <p className="font-medium text-slate-900">
+                        {testimonial.university}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="border-l-4 border-blue-600 pl-4 py-2 mb-4">
+                    <p className="text-sm text-slate-700">
+                      "{testimonial.testimonialText}"
                     </p>
-                    <div className="flex gap-2 mt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        asChild
-                      >
-                        <a
-                          href={scholar.facebook}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <Facebook className="w-4 h-4" />
-                        </a>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        asChild
-                      >
-                        <a
-                          href={scholar.linkedin}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <Linkedin className="w-4 h-4" />
-                        </a>
-                      </Button>
-                    </div>
                   </div>
-                </div>
 
-                {/* Scholarship Details */}
-                <div className="bg-[rgb(255,255,255)] rounded-lg p-4 mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Award className="w-4 h-4 text-blue-600" />
-                    <span className="font-semibold text-blue-900">
-                      {scholar.scholarship}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm text-slate-700">
-                    <div>
-                      <span className="text-slate-500">Year:</span>{" "}
-                      {scholar.year}
-                    </div>
-                    <div>
-                      <span className="text-slate-500">Field:</span>{" "}
-                      {scholar.field}
-                    </div>
-                  </div>
-                </div>
-
-                {/* University */}
-                <div className="flex items-start gap-2 mb-3 text-sm bg-[rgb(255,255,255)] rounded-[10px]">
-                  <GraduationCap className="w-4 h-4 text-slate-400 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-slate-900">
-                      {scholar.university}
-                    </p>
-                    <div className="flex items-center text-slate-600">
-                      <MapPin className="w-3 h-3 mr-1" />
-                      {scholar.country}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Testimonial */}
-                <div className="border-l-4 border-blue-600 pl-4 py-2 mb-4">
-                  <p className="text-sm text-slate-700 italic">
-                    "{scholar.testimonial}"
-                  </p>
-                </div>
-
-                {/* Social Links */}
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    size="sm"
-                    asChild
-                  >
-                    <a
-                      href={scholar.facebook}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                  {testimonial.isAnonymous && (
+                    <Badge
+                      variant="secondary"
+                      className="bg-amber-100 text-amber-900"
                     >
-                      <Facebook className="w-4 h-4 mr-2" />
-                      Facebook
-                    </a>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    size="sm"
-                    asChild
-                  >
-                    <a
-                      href={scholar.linkedin}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Linkedin className="w-4 h-4 mr-2" />
-                      LinkedIn
-                    </a>
-                  </Button>
+                      Anonymous
+                    </Badge>
+                  )}
                 </div>
-              </div>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

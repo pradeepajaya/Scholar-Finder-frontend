@@ -1,6 +1,7 @@
 {
     "java.compile.nullAnalysis.mode": "automatic",
     "java.configuration.updateBuildConfiguration": "interactive",
+    "java.jdt.ls.vmargs": "-javaagent:${env:USERPROFILE}\\.m2\\repository\\org\\projectlombok\\lombok\\1.18.30\\lombok-1.18.30.jar",
     "java.jdt.ls.java.home": "C:\\Program Files\\Microsoft\\jdk-17.0.14.7-hotspot",
     "java.configuration.runtimes": [
         {
@@ -8,5 +9,11 @@
             "path": "C:\\Program Files\\Microsoft\\jdk-17.0.14.7-hotspot",
             "default": true
         }
-    ]
+    ],
+    "yaml.schemas": {
+        ".vscode/schemas/spring-boot-any.json": [
+            "backend/*/src/main/resources/application.yml",
+            "backend/*/src/main/resources/application-*.yml"
+        ]
+    }
 }

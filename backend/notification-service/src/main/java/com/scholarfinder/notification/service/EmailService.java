@@ -207,15 +207,21 @@ public class EmailService {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            
-            helper.setFrom(fromEmail);
-            helper.setTo(notification.getRecipientEmail());
-            helper.setSubject(notification.getSubject());
-            
-            if (notification.getBodyHtml() != null) {
-                helper.setText(notification.getBody(), notification.getBodyHtml());
+
+            String from = requireText(fromEmail, "From email");
+            String to = requireText(notification.getRecipientEmail(), "Recipient email");
+            String subject = requireText(notification.getSubject(), "Email subject");
+            String body = requireText(notification.getBody(), "Email body");
+            String bodyHtml = notification.getBodyHtml();
+
+            helper.setFrom(from);
+            helper.setTo(to);
+            helper.setSubject(subject);
+
+            if (bodyHtml != null && !bodyHtml.isBlank()) {
+                helper.setText(body, bodyHtml);
             } else {
-                helper.setText(notification.getBody());
+                helper.setText(body);
             }
             
             mailSender.send(message);
@@ -258,5 +264,12 @@ public class EmailService {
             log.info("Retrying email {} (attempt {})", email.getId(), email.getRetryCount() + 1);
             processEmail(email);
         }
+    }
+
+    private String requireText(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(label + " is required");
+        }
+        return value;
     }
 }

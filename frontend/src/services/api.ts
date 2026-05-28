@@ -1,5 +1,6 @@
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+export const STUDENT_ID_KEY = 'scholar_finder_student_id';
 
 // Types
 export interface LoginRequest {
@@ -37,6 +38,116 @@ export interface ApiResponse<T> {
   message: string;
   data: T;
   timestamp: string;
+}
+
+export interface StudentProfileRequest {
+  userId?: number;
+  fullName: string;
+  dateOfBirth?: string;
+  gender?: string;
+  nationality?: string;
+  nicPassport?: string;
+  district?: string;
+  province?: string;
+  city?: string;
+  mobile?: string;
+  preferredLanguage?: string;
+  highestEducation?: string;
+  currentStatus?: string;
+  intendedLevel?: string;
+  intendedYear?: string;
+  preferredMode?: string;
+  preferredLocation?: string;
+  olYear?: string;
+  olType?: string;
+  olMedium?: string;
+  olPassed?: number | null;
+  olACount?: number | null;
+  olBCount?: number | null;
+  olCCount?: number | null;
+  mathsGrade?: string;
+  scienceGrade?: string;
+  englishGrade?: string;
+  alYear?: string;
+  alStream?: string;
+  alMedium?: string;
+  subject1?: string;
+  grade1?: string;
+  subject2?: string;
+  grade2?: string;
+  subject3?: string;
+  grade3?: string;
+  zScore?: number | null;
+  englishTest?: string | null;
+  overallScore?: string | null;
+  examYear?: string;
+  householdIncome?: string | null;
+  dependents?: number | null;
+  employmentStatus?: string;
+  governmentAssistance?: string;
+  background?: string;
+  disability?: string;
+  sports?: string;
+  leadership?: string;
+  firstGeneration?: string;
+  preferredCountries?: string[];
+  preferredFields?: string[];
+  scholarshipType?: string;
+  willingToReturn?: string;
+  profileCompletionPercentage?: number;
+}
+
+export interface StudentProfileResponse {
+  userId: number;
+  fullName: string;
+  profileCompletionPercentage?: number;
+}
+
+export interface MatchRequest {
+  studentUserId: number;
+  scholarshipIds?: number[];
+  educationLevel?: string;
+  country?: string;
+  fieldOfStudy?: string;
+  scholarshipType?: string;
+  minimumMatchPercentage?: number;
+  limit?: number;
+  sortBy?: string;
+}
+
+export interface ScholarshipMatchDto {
+  id: number;
+  title: string;
+  description: string;
+  provider: string;
+  country: string;
+  scholarshipType: string;
+  amount?: number;
+  currency?: string;
+  amountDisplay?: string;
+  level?: string;
+  applicationDeadline?: string;
+  deadlineDisplay?: string;
+  isFeatured?: boolean;
+  applyLink?: string;
+  imageUrl?: string;
+  matchPercentage: number;
+  matchQuality: string;
+  matchedCriteria: string[];
+  unmatchedCriteria: string[];
+  isEligible: boolean;
+}
+
+export interface MatchResponse {
+  studentId: number;
+  studentName: string;
+  totalScholarshipsAnalyzed: number;
+  matchesFound: number;
+  excellentMatches: number;
+  goodMatches: number;
+  fairMatches: number;
+  scholarships: ScholarshipMatchDto[];
+  improvementSuggestions: string[];
 }
 
 // Token management
@@ -233,6 +344,13 @@ export const authApi = {
   logout: () => apiClient.logout(),
   getCurrentUser: () => apiClient.getCurrentUser(),
   verifyEmail: (token: string) => apiClient.verifyEmail(token),
+};
+
+export const scholarshipApi = {
+  upsertStudentProfile: (request: StudentProfileRequest) =>
+    apiClient.post<StudentProfileResponse>('/scholarships/students', request),
+  getMatches: (request: MatchRequest) =>
+    apiClient.post<MatchResponse>('/scholarships/matches', request),
 };
 
 export default apiClient;

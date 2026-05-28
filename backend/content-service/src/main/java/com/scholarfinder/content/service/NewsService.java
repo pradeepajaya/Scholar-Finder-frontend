@@ -12,6 +12,7 @@ import com.scholarfinder.content.repository.CategoryRepository;
 import com.scholarfinder.content.repository.NewsRepository;
 import com.scholarfinder.content.repository.TagRepository;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.lang.NonNull;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -51,7 +53,7 @@ public class NewsService {
         news.setStatus("DRAFT");
         news.setViewsCount(0);
         
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -64,7 +66,7 @@ public class NewsService {
             .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
         
         mapRequestToEntity(request, news);
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -175,7 +177,7 @@ public class NewsService {
         news.setStatus("PUBLISHED");
         news.setPublishedAt(LocalDateTime.now());
         
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -189,7 +191,7 @@ public class NewsService {
         
         news.setStatus("ARCHIVED");
         
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -213,7 +215,7 @@ public class NewsService {
             .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
         
         news.setIsFeatured(featured);
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -226,7 +228,7 @@ public class NewsService {
             .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
         
         news.setIsBreaking(breaking);
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -339,10 +341,16 @@ public class NewsService {
         return slug;
     }
 
+    @NonNull
     private Long requireId(Long id, String label) {
         if (id == null) {
             throw new IllegalArgumentException(label + " id is required");
         }
         return id;
+    }
+
+    @NonNull
+    private News requireNews(News news) {
+        return Objects.requireNonNull(news, "News is required");
     }
 }

@@ -16,6 +16,7 @@ import StudentLogin from "./components/StudentLogin";
 import { InstitutionLogin } from "./components/InstitutionLogin";
 import { AdminLogin } from "./components/AdminLogin";
 import { InstitutionDashboard } from "./components/InstitutionDashboard";
+import { STUDENT_ID_KEY } from "./services/api";
 
 type Page =
   | "home"
@@ -37,7 +38,9 @@ type UserType = "student" | "institution" | "admin";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>("home");
-  const [isRegistered, setIsRegistered] = useState(false);
+  const [isRegistered, setIsRegistered] = useState(
+    () => !!localStorage.getItem(STUDENT_ID_KEY),
+  );
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userType, setUserType] = useState<UserType | null>(null);
 
@@ -46,10 +49,10 @@ export default function App() {
     setUserType(null);
     setIsRegistered(false);
     setCurrentPage("home");
+    localStorage.removeItem(STUDENT_ID_KEY);
   };
 
   const handleStudentRegistration = (data: any) => {
-    console.log("Student registration data:", data);
     setIsRegistered(true);
     setCurrentPage("matches");
   };

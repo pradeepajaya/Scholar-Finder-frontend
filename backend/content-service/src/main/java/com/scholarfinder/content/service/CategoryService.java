@@ -4,10 +4,12 @@ import com.scholarfinder.content.dto.CategoryDto;
 import com.scholarfinder.content.entity.Category;
 import com.scholarfinder.content.repository.CategoryRepository;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,7 +30,7 @@ public class CategoryService {
         mapToEntity(request, category);
         category.setSlug(generateSlug(request.getName()));
         
-        Category saved = categoryRepository.save(category);
+        Category saved = categoryRepository.save(requireCategory(category));
         return mapToDto(saved);
     }
 
@@ -36,11 +38,12 @@ public class CategoryService {
      * Update an existing category.
      */
     public CategoryDto updateCategory(Long id, CategoryDto request) {
-        Category category = categoryRepository.findById(id)
+        Long categoryId = requireId(id);
+        Category category = categoryRepository.findById(categoryId)
             .orElseThrow(() -> new EntityNotFoundException("Category not found with id: " + id));
         
         mapToEntity(request, category);
-        Category saved = categoryRepository.save(category);
+        Category saved = categoryRepository.save(requireCategory(category));
         return mapToDto(saved);
     }
 
@@ -49,7 +52,8 @@ public class CategoryService {
      */
     @Transactional(readOnly = true)
     public CategoryDto getCategoryById(Long id) {
-        Category category = categoryRepository.findById(id)
+        Long categoryId = requireId(id);
+        Category category = categoryRepository.findById(categoryId)
             .orElseThrow(() -> new EntityNotFoundException("Category not found with id: " + id));
         return mapToDto(category);
     }
@@ -102,7 +106,8 @@ public class CategoryService {
      */
     @Transactional(readOnly = true)
     public List<CategoryDto> getChildCategories(Long parentId) {
-        return categoryRepository.findByParentIdAndIsActiveTrue(parentId)
+        Long safeParentId = requireId(parentId);
+        return categoryRepository.findByParentIdAndIsActiveTrue(safeParentId)
             .stream()
             .map(this::mapToDto)
             .collect(Collectors.toList());
@@ -112,21 +117,23 @@ public class CategoryService {
      * Delete a category.
      */
     public void deleteCategory(Long id) {
-        if (!categoryRepository.existsById(id)) {
+        Long categoryId = requireId(id);
+        if (!categoryRepository.existsById(categoryId)) {
             throw new EntityNotFoundException("Category not found with id: " + id);
         }
-        categoryRepository.deleteById(id);
+        categoryRepository.deleteById(categoryId);
     }
 
     /**
      * Toggle category active status.
      */
     public CategoryDto toggleActive(Long id) {
-        Category category = categoryRepository.findById(id)
+        Long categoryId = requireId(id);
+        Category category = categoryRepository.findById(categoryId)
             .orElseThrow(() -> new EntityNotFoundException("Category not found with id: " + id));
         
         category.setIsActive(!category.getIsActive());
-        Category saved = categoryRepository.save(category);
+        Category saved = categoryRepository.save(requireCategory(category));
         return mapToDto(saved);
     }
 
@@ -142,7 +149,8 @@ public class CategoryService {
         category.setIsActive(dto.getIsActive() != null ? dto.getIsActive() : true);
 
         if (dto.getParentId() != null) {
-            Category parent = categoryRepository.findById(dto.getParentId())
+            Long parentId = requireId(dto.getParentId());
+            Category parent = categoryRepository.findById(parentId)
                 .orElseThrow(() -> new EntityNotFoundException("Parent category not found with id: " + dto.getParentId()));
             category.setParent(parent);
         } else {
@@ -185,5 +193,18 @@ public class CategoryService {
         }
 
         return slug;
+    }
+
+    @NonNull
+    private Long requireId(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("Category id is required");
+        }
+        return id;
+    }
+
+    @NonNull
+    private Category requireCategory(Category category) {
+        return Objects.requireNonNull(category, "Category is required");
     }
 }

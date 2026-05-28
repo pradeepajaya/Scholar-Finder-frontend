@@ -4,6 +4,7 @@ import com.scholarfinder.content.dto.TagDto;
 import com.scholarfinder.content.entity.Tag;
 import com.scholarfinder.content.repository.TagRepository;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -204,6 +205,7 @@ public class TagService {
         return name.trim();
     }
 
+    @NonNull
     private Long requireId(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Tag id is required");

@@ -34,6 +34,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./ui/tooltip";
+import {
+  scholarshipApi,
+  STUDENT_ID_KEY,
+  StudentProfileRequest,
+} from "@/services/api";
 
 interface FormData {
   fullName: string;
@@ -136,6 +141,8 @@ export function StudentRegistration({
   onComplete: (data: FormData) => void;
 }) {
   const [currentStep, setCurrentStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [formData, setFormData] = useState<FormData>({
     fullName: "",
     dateOfBirth: "",
@@ -194,6 +201,134 @@ export function StudentRegistration({
 
   const [savedProgress, setSavedProgress] = useState(false);
 
+  const toOptionalText = (value: string) =>
+    value && value.trim().length > 0 ? value.trim() : undefined;
+
+  const toOptionalInt = (value: string) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
+  const toOptionalNumber = (value: string) => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
+  const normalizeEducationLevel = (value: string) => {
+    if (!value) return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (
+      normalized.includes("bachelor") ||
+      normalized.includes("undergraduate")
+    ) {
+      return "UNDERGRADUATE";
+    }
+    if (normalized.includes("master") || normalized.includes("postgraduate")) {
+      return "POSTGRADUATE";
+    }
+    if (normalized.includes("phd") || normalized.includes("doctor")) {
+      return "PHD";
+    }
+    return value.trim();
+  };
+
+  const normalizeScholarshipType = (value: string) => {
+    switch (value) {
+      case "Fully Funded":
+        return "FULL";
+      case "Partial":
+        return "PARTIAL";
+      case "Tuition Only":
+        return "TUITION";
+      case "Living Allowance":
+        return "LIVING_EXPENSES";
+      case "Any":
+      default:
+        return undefined;
+    }
+  };
+
+  const normalizeHouseholdIncome = (value: string) => {
+    if (!value || value === "prefer-not-to-say") {
+      return undefined;
+    }
+    return value;
+  };
+
+  const normalizeEnglishTest = (value: string) => {
+    if (!value || value === "None" || value === "O/L A/L Only") {
+      return undefined;
+    }
+    return value;
+  };
+
+  const buildProfileRequest = (data: FormData): StudentProfileRequest => {
+    const storedUserId = localStorage.getItem(STUDENT_ID_KEY);
+    const englishTest = normalizeEnglishTest(data.englishTest);
+
+    return {
+      userId: storedUserId ? Number(storedUserId) : undefined,
+      fullName: data.fullName.trim(),
+      dateOfBirth: toOptionalText(data.dateOfBirth),
+      gender: toOptionalText(data.gender),
+      nationality: toOptionalText(data.nationality),
+      nicPassport: toOptionalText(data.nicPassport),
+      district: toOptionalText(data.district),
+      province: toOptionalText(data.province),
+      city: toOptionalText(data.city),
+      mobile: toOptionalText(data.mobile),
+      preferredLanguage: toOptionalText(data.preferredLanguage),
+      highestEducation: toOptionalText(data.highestEducation),
+      currentStatus: toOptionalText(data.currentStatus),
+      intendedLevel: normalizeEducationLevel(data.intendedLevel),
+      intendedYear: toOptionalText(data.intendedYear),
+      preferredMode: toOptionalText(data.preferredMode),
+      preferredLocation: toOptionalText(data.preferredLocation),
+      olYear: toOptionalText(data.olYear),
+      olType: toOptionalText(data.olType),
+      olMedium: toOptionalText(data.olMedium),
+      olPassed: toOptionalInt(data.olPassed) ?? null,
+      olACount: toOptionalInt(data.olA) ?? null,
+      olBCount: toOptionalInt(data.olB) ?? null,
+      olCCount: toOptionalInt(data.olC) ?? null,
+      mathsGrade: toOptionalText(data.mathsGrade),
+      scienceGrade: toOptionalText(data.scienceGrade),
+      englishGrade: toOptionalText(data.englishGrade),
+      alYear: toOptionalText(data.alYear),
+      alStream: toOptionalText(data.alStream),
+      alMedium: toOptionalText(data.alMedium),
+      subject1: toOptionalText(data.subject1),
+      grade1: toOptionalText(data.grade1),
+      subject2: toOptionalText(data.subject2),
+      grade2: toOptionalText(data.grade2),
+      subject3: toOptionalText(data.subject3),
+      grade3: toOptionalText(data.grade3),
+      zScore: toOptionalNumber(data.zScore) ?? null,
+      englishTest: englishTest ?? null,
+      overallScore: englishTest
+        ? (toOptionalText(data.overallScore) ?? null)
+        : null,
+      examYear: englishTest ? toOptionalText(data.examYear) : undefined,
+      householdIncome: normalizeHouseholdIncome(data.householdIncome) ?? null,
+      dependents: toOptionalInt(data.dependents) ?? null,
+      employmentStatus: toOptionalText(data.employmentStatus),
+      governmentAssistance: toOptionalText(data.governmentAssistance),
+      background: toOptionalText(data.background),
+      disability: toOptionalText(data.disability),
+      sports: toOptionalText(data.sports),
+      leadership: toOptionalText(data.leadership),
+      firstGeneration: toOptionalText(data.firstGeneration),
+      preferredCountries:
+        data.preferredCountries.length > 0
+          ? data.preferredCountries
+          : undefined,
+      preferredFields:
+        data.preferredFields.length > 0 ? data.preferredFields : undefined,
+      scholarshipType: normalizeScholarshipType(data.scholarshipType),
+      willingToReturn: toOptionalText(data.willingToReturn),
+    };
+  };
+
   const updateFormData = (field: keyof FormData, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -215,12 +350,29 @@ export function StudentRegistration({
 
   const progress = (currentStep / steps.length) * 100;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentStep < steps.length) {
       setCurrentStep(currentStep + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } else {
-      onComplete(formData);
+      return;
+    }
+
+    setSubmitError("");
+    setIsSubmitting(true);
+    try {
+      const payload = buildProfileRequest(formData);
+      const response = await scholarshipApi.upsertStudentProfile(payload);
+
+      if (response.success && response.data) {
+        localStorage.setItem(STUDENT_ID_KEY, String(response.data.userId));
+        onComplete(formData);
+      } else {
+        throw new Error(response.message || "Failed to save student profile");
+      }
+    } catch (err: any) {
+      setSubmitError(err?.message || "Failed to save your profile. Try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1752,6 +1904,13 @@ export function StudentRegistration({
         </AnimatePresence>
       </Card>
 
+      {submitError && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 mt-0.5" />
+          <span>{submitError}</span>
+        </div>
+      )}
+
       {/* Navigation Buttons */}
       <div className="flex justify-between items-center gap-4">
         <Button
@@ -1773,13 +1932,13 @@ export function StudentRegistration({
 
         <Button
           onClick={handleNext}
-          disabled={!isStepValid()}
+          disabled={!isStepValid() || isSubmitting}
           className={`px-8 ${currentStep === steps.length ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
         >
           {currentStep === steps.length ? (
             <>
               <Check className="w-4 h-4 mr-2" />
-              Complete Registration
+              {isSubmitting ? "Saving Profile..." : "Complete Registration"}
             </>
           ) : (
             <>

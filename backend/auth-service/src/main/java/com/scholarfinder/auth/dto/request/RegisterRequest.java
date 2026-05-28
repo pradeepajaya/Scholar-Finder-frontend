@@ -26,6 +26,7 @@ public class RegisterRequest {
     @NotBlank(message = "Confirm password is required")
     private String confirmPassword;
 
+    @Builder.Default
     private Role role = Role.STUDENT;
 
     // Additional fields for profile creation

@@ -18,7 +18,6 @@ import java.util.Map;
 @RequestMapping("/api/scholarships")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = "*")
 public class ScholarshipController {
 
     private final ScholarshipService scholarshipService;

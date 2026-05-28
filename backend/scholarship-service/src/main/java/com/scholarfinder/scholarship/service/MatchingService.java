@@ -34,14 +34,19 @@ public class MatchingService {
     private final MatchingConfig config;
 
     // Income level mapping for comparison
-    private static final Map<String, Integer> INCOME_LEVELS = Map.of(
-        "Below LKR 30,000", 1,
-        "LKR 30,000 - 50,000", 2,
-        "LKR 50,000 - 75,000", 3,
-        "LKR 75,000 - 100,000", 4,
-        "LKR 100,000 - 150,000", 5,
-        "LKR 150,000 - 200,000", 6,
-        "Above LKR 200,000", 7
+    private static final Map<String, Integer> INCOME_LEVELS = Map.ofEntries(
+        Map.entry("Below LKR 30,000", 1),
+        Map.entry("LKR 30,000 - 50,000", 2),
+        Map.entry("LKR 50,000 - 75,000", 3),
+        Map.entry("LKR 75,000 - 100,000", 4),
+        Map.entry("LKR 100,000 - 150,000", 5),
+        Map.entry("LKR 150,000 - 200,000", 6),
+        Map.entry("Above LKR 200,000", 7),
+        Map.entry("Below 50,000", 1),
+        Map.entry("50,000-100,000", 3),
+        Map.entry("100,000-200,000", 5),
+        Map.entry("Above 200,000", 7),
+        Map.entry("prefer-not-to-say", 5)
     );
 
     /**
@@ -117,11 +122,14 @@ public class MatchingService {
         int earnedPoints = 0;
         String category = "Education Level";
 
-        String studentLevel = student.getIntendedLevel();
+        String studentLevel = normalizeEducationLevel(student.getIntendedLevel());
         String[] eligibleLevels = scholarship.getEligibleLevels();
 
         if (eligibleLevels != null && studentLevel != null) {
-            boolean levelMatches = Arrays.asList(eligibleLevels).contains(studentLevel.toUpperCase());
+            boolean levelMatches = Arrays.stream(eligibleLevels)
+                .map(this::normalizeEducationLevel)
+                .filter(Objects::nonNull)
+                .anyMatch(level -> level.equals(studentLevel));
             
             if (levelMatches) {
                 earnedPoints = maxPoints;
@@ -455,8 +463,8 @@ public class MatchingService {
             String studentIncome = student.getHouseholdIncome();
             
             if (studentIncome != null && maxIncome != null) {
-                int studentIncomeLevel = INCOME_LEVELS.getOrDefault(studentIncome, 5);
-                int maxIncomeLevel = INCOME_LEVELS.getOrDefault(maxIncome, 5);
+            int studentIncomeLevel = resolveIncomeLevel(studentIncome);
+            int maxIncomeLevel = resolveIncomeLevel(maxIncome);
                 
                 if (studentIncomeLevel <= maxIncomeLevel) {
                     earnedPoints = maxPoints;
@@ -715,6 +723,40 @@ public class MatchingService {
         Set<String> acceptableTests = Set.of("IELTS", "TOEFL", "PTE", "TOEFL IBT", "TOEFL ITP");
         return acceptableTests.contains(test1.toUpperCase()) && 
                acceptableTests.contains(test2.toUpperCase());
+    }
+
+    private String normalizeEducationLevel(String level) {
+        if (level == null) {
+            return null;
+        }
+        String cleaned = level.trim().toUpperCase()
+            .replace("'", "")
+            .replace(".", "");
+
+        if (cleaned.contains("BACHELOR")) {
+            return "UNDERGRADUATE";
+        }
+        if (cleaned.contains("MASTER") || cleaned.contains("POSTGRADUATE")) {
+            return "POSTGRADUATE";
+        }
+        if (cleaned.contains("PHD") || cleaned.contains("DOCTORATE")) {
+            return "PHD";
+        }
+        return cleaned;
+    }
+
+    private int resolveIncomeLevel(String income) {
+        if (income == null) {
+            return 5;
+        }
+        Integer direct = INCOME_LEVELS.get(income);
+        if (direct != null) {
+            return direct;
+        }
+        String normalized = income.trim()
+            .replace("LKR", "")
+            .replace(" ", "");
+        return INCOME_LEVELS.getOrDefault(normalized, 5);
     }
 
     /**
