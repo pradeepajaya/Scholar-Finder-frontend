@@ -31,6 +31,11 @@ export function SearchBar({ onSearch, onFilterChange }: SearchBarProps) {
     onSearch(searchQuery);
   };
 
+  const handleSearchQueryChange = (value: string) => {
+    setSearchQuery(value);
+    onSearch(value);
+  };
+
   const toggleFilter = (filter: string) => {
     const newFilters = activeFilters.includes(filter)
       ? activeFilters.filter((f) => f !== filter)
@@ -54,9 +59,19 @@ export function SearchBar({ onSearch, onFilterChange }: SearchBarProps) {
               type="text"
               placeholder="Search scholars by name, institution, or field..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-12 pr-4 py-6 text-base border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-xl shadow-sm"
+              onChange={(e) => handleSearchQueryChange(e.target.value)}
+              className="pl-12 pr-10 py-6 text-base border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-xl shadow-sm"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => handleSearchQueryChange("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Clear search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
           <Button
             type="button"

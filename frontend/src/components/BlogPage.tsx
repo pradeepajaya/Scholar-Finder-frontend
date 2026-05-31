@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -11,8 +12,12 @@ import {
   Clock,
   TrendingUp,
   Sparkles,
+  Search,
+  X,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { Input } from "./ui/input";
+import { matchesSearch } from "@/utils/search";
 
 const blogPosts = [
   {
@@ -145,8 +150,20 @@ const categoryColors: Record<
 };
 
 export function BlogPage() {
-  const featuredPosts = blogPosts.filter((post) => post.featured);
-  const regularPosts = blogPosts.filter((post) => !post.featured);
+  const [searchQuery, setSearchQuery] = useState("");
+  const filteredPosts = blogPosts.filter((post) =>
+    matchesSearch(searchQuery, [
+      post.title,
+      post.excerpt,
+      post.content,
+      post.author,
+      post.category,
+      post.date,
+      post.readTime,
+    ]),
+  );
+  const featuredPosts = filteredPosts.filter((post) => post.featured);
+  const regularPosts = filteredPosts.filter((post) => !post.featured);
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
@@ -166,6 +183,46 @@ export function BlogPage() {
           succeed in your scholarship journey
         </p>
       </div>
+
+      <Card className="p-4 mb-10 bg-white">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <Input
+            type="text"
+            placeholder="Search articles by title, author, category, or topic..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 pr-10 py-6 text-base border-slate-300 focus:border-blue-500 focus:ring-blue-500"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Clear blog search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </Card>
+
+      {filteredPosts.length === 0 && (
+        <Card className="p-12 text-center mb-16">
+          <h3 className="text-xl font-semibold text-slate-900 mb-2">
+            No articles found
+          </h3>
+          <p className="text-slate-600 mb-4">
+            Try a different keyword or clear the search.
+          </p>
+          <Button
+            onClick={() => setSearchQuery("")}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            Clear Search
+          </Button>
+        </Card>
+      )}
 
       {/* Featured Posts - Hero Layout */}
       {featuredPosts.length > 0 && (

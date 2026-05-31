@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { matchesSearch } from "@/utils/search";
 
 const scholarships = [
   {
@@ -375,17 +376,21 @@ export function ScholarshipsPage() {
   const [tempCountry, setTempCountry] = useState("All Countries");
   const [tempLevel, setTempLevel] = useState("All Levels");
 
-  const featuredScholarships = scholarships.filter((s) => s.featured);
-  const regularScholarships = scholarships.filter((s) => !s.featured);
-
   // Filter scholarships based on search and filters
-  const filteredScholarships = regularScholarships.filter((scholarship) => {
-    const matchesSearch =
-      scholarship.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      scholarship.provider.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      scholarship.fieldOfStudy
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase());
+  const filteredScholarships = scholarships.filter((scholarship) => {
+    const matchesSearchQuery = matchesSearch(searchQuery, [
+      scholarship.title,
+      scholarship.provider,
+      scholarship.country,
+      scholarship.amount,
+      scholarship.deadline,
+      scholarship.fieldOfStudy,
+      scholarship.level,
+      scholarship.description,
+      scholarship.requirements,
+      scholarship.benefits,
+      scholarship.category,
+    ]);
     const matchesCategory =
       selectedCategory === "All" || scholarship.category === selectedCategory;
     const matchesCountry =
@@ -395,8 +400,12 @@ export function ScholarshipsPage() {
       selectedLevel === "All Levels" ||
       scholarship.level.includes(selectedLevel);
 
-    return matchesSearch && matchesCategory && matchesCountry && matchesLevel;
+    return (
+      matchesSearchQuery && matchesCategory && matchesCountry && matchesLevel
+    );
   });
+  const featuredScholarships = filteredScholarships.filter((s) => s.featured);
+  const regularScholarships = filteredScholarships.filter((s) => !s.featured);
 
   // Count active filters
   const activeFiltersCount =
@@ -673,6 +682,9 @@ export function ScholarshipsPage() {
                   setSelectedCategory("All");
                   setSelectedCountry("All Countries");
                   setSelectedLevel("All Levels");
+                  setTempCategory("All");
+                  setTempCountry("All Countries");
+                  setTempLevel("All Levels");
                 }}
                 className="bg-blue-600 hover:bg-blue-700 text-white"
               >
@@ -680,9 +692,9 @@ export function ScholarshipsPage() {
               </Button>
             </div>
           </Card>
-        ) : (
+        ) : regularScholarships.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredScholarships.map((scholarship, index) => (
+            {regularScholarships.map((scholarship, index) => (
               <ScholarshipCard
                 key={scholarship.id}
                 scholarship={scholarship}
@@ -692,6 +704,10 @@ export function ScholarshipsPage() {
               />
             ))}
           </div>
+        ) : (
+          <Card className="p-8 text-center text-slate-600">
+            Matching results are shown in the featured section above.
+          </Card>
         )}
       </div>
 

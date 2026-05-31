@@ -9,7 +9,9 @@ import {
   GraduationCap,
   Loader,
   Plus,
+  Search,
   Send,
+  X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Input } from "./ui/input";
@@ -24,6 +26,7 @@ import {
   DialogTrigger,
 } from "./ui/dialog";
 import apiClient from "../services/api";
+import { matchesSearch } from "@/utils/search";
 
 interface Testimonial {
   id: number;
@@ -45,6 +48,7 @@ export function PreviousScholars() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     scholarship: "",
@@ -102,6 +106,19 @@ export function PreviousScholars() {
       setIsSubmitting(false);
     }
   };
+
+  const filteredTestimonials = testimonials.filter((testimonial) =>
+    matchesSearch(searchQuery, [
+      testimonial.scholarName,
+      testimonial.scholarshipName,
+      testimonial.yearCompleted,
+      testimonial.fieldOfStudy,
+      testimonial.university,
+      testimonial.testimonialText,
+      testimonial.rating,
+      testimonial.isAnonymous ? "Anonymous Scholar" : "",
+    ]),
+  );
 
   return (
     <div className="max-w-6xl mx-auto p-6">
@@ -343,6 +360,31 @@ export function PreviousScholars() {
         </div>
       </div>
 
+      {!isLoading && testimonials.length > 0 && (
+        <Card className="p-4 mb-8 bg-white">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <Input
+              type="text"
+              placeholder="Search stories by scholar, scholarship, field, or university..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-10 py-6 text-base border-slate-300 focus:border-blue-500 focus:ring-blue-500"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Clear success stories search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </Card>
+      )}
+
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader className="w-8 h-8 animate-spin text-blue-600" />
@@ -353,9 +395,24 @@ export function PreviousScholars() {
             No testimonials yet. Be the first to share your success story!
           </p>
         </div>
+      ) : filteredTestimonials.length === 0 ? (
+        <Card className="p-12 text-center">
+          <h3 className="text-xl font-semibold text-slate-900 mb-2">
+            No success stories found
+          </h3>
+          <p className="text-slate-600 mb-4">
+            Try a different keyword or clear the search.
+          </p>
+          <Button
+            onClick={() => setSearchQuery("")}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            Clear Search
+          </Button>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {testimonials.map((testimonial, index) => (
+          {filteredTestimonials.map((testimonial, index) => (
             <motion.div
               key={testimonial.id}
               initial={{ opacity: 0, y: 20 }}
