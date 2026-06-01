@@ -186,6 +186,47 @@ export interface ScholarshipDto {
   viewsCount?: number;
 }
 
+export interface ApplicationDocumentDto {
+  requirementName: string;
+  source: 'EXISTING_PROFILE_DOCUMENT' | 'NEW_UPLOAD';
+  documentId?: string;
+  documentName?: string;
+  fileName?: string;
+}
+
+export interface ApplicationSubmitRequest {
+  studentId: number;
+  scholarshipId: number;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  currentEducation?: string;
+  intendedLevel?: string;
+  fieldOfStudy?: string;
+  alStream?: string;
+  alResults?: string;
+  zScore?: string;
+  gpa?: string;
+  englishTest?: string;
+  englishScore?: string;
+  householdIncome?: string;
+  achievements?: string;
+  qualificationSummary?: string;
+  coverLetter?: string;
+  requiredDocuments?: string[];
+  documents?: ApplicationDocumentDto[];
+}
+
+export interface ApplicationResponse {
+  id: number;
+  scholarshipId: number;
+  studentId: number;
+  status: string;
+  matchScore?: number;
+  updatedExistingApplication: boolean;
+  submittedAt: string;
+}
+
 export interface MatchResponse {
   studentId: number;
   studentName: string;
@@ -403,6 +444,8 @@ export const scholarshipApi = {
     apiClient.get<ScholarshipDto[]>('/scholarships'),
   getScholarship: (id: number) =>
     apiClient.get<ScholarshipDto>(`/scholarships/${id}`),
+  submitApplication: (scholarshipId: number, request: ApplicationSubmitRequest) =>
+    apiClient.post<ApplicationResponse>(`/scholarships/${scholarshipId}/apply`, request),
   getMatches: (request: MatchRequest) =>
     apiClient.post<MatchResponse>('/scholarships/matches', request),
 };

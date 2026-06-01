@@ -24,6 +24,11 @@ import {
   Upload,
   Trash2,
 } from "lucide-react";
+import {
+  getStoredStudentDocuments,
+  saveStudentDocuments,
+  type StudentDocument,
+} from "@/utils/studentDocuments";
 
 interface ProfileData {
   name: string;
@@ -34,35 +39,14 @@ interface ProfileData {
   avatarUrl: string;
 }
 
-interface DocumentItem {
-  name: string;
-  status: "uploaded" | "pending";
-  fileName?: string;
-}
-
-const initialDocuments: DocumentItem[] = [
-  {
-    name: "O/L Certificate",
-    status: "uploaded",
-    fileName: "ol_certificate.pdf",
-  },
-  {
-    name: "A/L Certificate",
-    status: "uploaded",
-    fileName: "al_certificate.pdf",
-  },
-  { name: "NIC Copy", status: "uploaded", fileName: "nic_copy.pdf" },
-  { name: "IELTS Certificate", status: "uploaded", fileName: "ielts_cert.pdf" },
-  { name: "CV / Resume", status: "pending" },
-  { name: "Personal Statement", status: "pending" },
-];
-
 interface UserProfileProps {
   onNavigate?: (page: string) => void;
 }
 
 export function UserProfile({ onNavigate }: UserProfileProps) {
-  const [documents, setDocuments] = useState<DocumentItem[]>(initialDocuments);
+  const [documents, setDocuments] = useState<StudentDocument[]>(
+    getStoredStudentDocuments,
+  );
   const [activeTab, setActiveTab] = useState("overview");
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,13 +65,20 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && uploadingIndex !== null) {
-      setDocuments((prev) =>
-        prev.map((doc, i) =>
+      setDocuments((prev) => {
+        const next = prev.map((doc, i) =>
           i === uploadingIndex
-            ? { ...doc, status: "uploaded" as const, fileName: file.name }
+            ? {
+                ...doc,
+                status: "uploaded" as const,
+                fileName: file.name,
+                uploadedAt: new Date().toISOString(),
+              }
             : doc,
-        ),
-      );
+        );
+        saveStudentDocuments(next);
+        return next;
+      });
     }
     setUploadingIndex(null);
     // Reset input so the same file can be re-selected
@@ -95,13 +86,15 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
   };
 
   const handleRemoveDocument = (index: number) => {
-    setDocuments((prev) =>
-      prev.map((doc, i) =>
+    setDocuments((prev) => {
+      const next = prev.map((doc, i) =>
         i === index
           ? { ...doc, status: "pending" as const, fileName: undefined }
           : doc,
-      ),
-    );
+      );
+      saveStudentDocuments(next);
+      return next;
+    });
   };
 
   const handleCompleteProfile = () => {

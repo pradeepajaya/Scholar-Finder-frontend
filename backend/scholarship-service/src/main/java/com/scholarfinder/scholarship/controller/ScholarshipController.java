@@ -2,6 +2,7 @@ package com.scholarfinder.scholarship.controller;
 
 import com.scholarfinder.scholarship.dto.*;
 import com.scholarfinder.scholarship.entity.Scholarship;
+import com.scholarfinder.scholarship.service.ApplicationService;
 import com.scholarfinder.scholarship.service.ScholarshipService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import java.util.Map;
 public class ScholarshipController {
 
     private final ScholarshipService scholarshipService;
+    private final ApplicationService applicationService;
 
     /**
      * Get matched scholarships for a student.
@@ -83,6 +85,28 @@ public class ScholarshipController {
             log.error("Error getting match details: {}", e.getMessage(), e);
             return ResponseEntity.badRequest()
                 .body(ApiResponse.error("Failed to get match details: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Submit a student's application for a scholarship.
+     *
+     * POST /api/scholarships/{scholarshipId}/apply
+     */
+    @PostMapping("/{scholarshipId}/apply")
+    public ResponseEntity<ApiResponse<ApplicationResponse>> submitApplication(
+            @PathVariable Long scholarshipId,
+            @RequestBody ApplicationSubmitRequest request) {
+
+        log.info("Submitting application for scholarship {}", scholarshipId);
+
+        try {
+            ApplicationResponse response = applicationService.submitApplication(scholarshipId, request);
+            return ResponseEntity.ok(ApiResponse.success(response, "Application submitted successfully"));
+        } catch (Exception e) {
+            log.error("Error submitting application: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to submit application: " + e.getMessage()));
         }
     }
 
