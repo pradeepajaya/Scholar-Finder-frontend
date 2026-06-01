@@ -63,7 +63,7 @@ services:
     build: ./discovery-service
     container_name: scholar-finder-discovery
     ports:
-      - "8765:8761"
+      - "${DISCOVERY_PORT:-8761}:8761"
     networks:
       - scholar-network
     healthcheck:
@@ -79,11 +79,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka:eureka123@discovery-service:8761/eureka/
       - SPRING_PROFILES_ACTIVE=docker
-    depends_on:
-      discovery-service:
-        condition: service_healthy
     networks:
       - scholar-network
 

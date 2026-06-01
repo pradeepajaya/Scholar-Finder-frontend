@@ -36,6 +36,9 @@ public class Scholarship {
     @Column(name = "institution_id", nullable = false)
     private Long institutionId;
 
+    @Column(name = "provider_name")
+    private String providerName;
+
     @Column(nullable = false)
     private String title;
 
@@ -140,6 +143,30 @@ public class Scholarship {
 
     @Column(name = "additional_requirements", columnDefinition = "TEXT")
     private String additionalRequirements;
+
+    @Column(name = "benefits", columnDefinition = "TEXT[]")
+    private String[] benefits;
+
+    @Column(name = "selection_criteria", columnDefinition = "TEXT[]")
+    private String[] selectionCriteria;
+
+    @Column(name = "application_steps", columnDefinition = "TEXT[]")
+    private String[] applicationSteps;
+
+    @Column(name = "application_url", length = 500)
+    private String applicationUrl;
+
+    @Column(name = "contact_email")
+    private String contactEmail;
+
+    @Column(name = "contact_phone")
+    private String contactPhone;
+
+    @Column(name = "website_url", length = 500)
+    private String websiteUrl;
+
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
 
     // Status
     @Column(length = 50)

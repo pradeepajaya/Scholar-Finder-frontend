@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import {
   Search,
   Filter,
@@ -22,6 +29,7 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { matchesSearch } from "@/utils/search";
+import { scholarshipApi, ScholarshipDto } from "@/services/api";
 
 const scholarships = [
   {
@@ -354,6 +362,7 @@ const categories = [
 ];
 const countries = [
   "All Countries",
+  "Sri Lanka",
   "United Kingdom",
   "United States",
   "Germany",
@@ -362,7 +371,176 @@ const countries = [
   "Japan",
   "Multiple EU Countries",
 ];
-const levels = ["All Levels", "Bachelors", "Masters", "PhD"];
+const levels = [
+  "All Levels",
+  "Undergraduate",
+  "Postgraduate",
+  "Bachelors",
+  "Masters",
+  "PhD",
+];
+
+type BrowseScholarship = (typeof scholarships)[number] & {
+  source: "backend" | "static";
+  coveragePercentage?: number;
+  eligibleCountries?: string[];
+  eligibleFields?: string[];
+  eligibleLevels?: string[];
+  minGpa?: number;
+  minAge?: number;
+  maxAge?: number;
+  requiredEnglishTest?: string;
+  minEnglishScore?: number;
+  minAlPasses?: number;
+  requiredAlStream?: string;
+  minZScore?: number;
+  requiresFinancialNeed?: boolean;
+  maxHouseholdIncome?: string;
+  sportsAchievementRequired?: boolean;
+  leadershipRequired?: boolean;
+  firstGenerationPriority?: boolean;
+  disabilityFriendly?: boolean;
+  returnToHomeRequired?: boolean;
+  startDate?: string;
+  endDate?: string;
+  durationMonths?: number;
+  requiredDocuments?: string[];
+  additionalRequirements?: string;
+  selectionCriteria?: string[];
+  applicationSteps?: string[];
+  applicationUrl?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  websiteUrl?: string;
+  viewsCount?: number;
+  totalApplications?: number;
+};
+
+const sampleScholarships: BrowseScholarship[] = scholarships.map(
+  (scholarship) => ({
+    ...scholarship,
+    source: "static",
+  }),
+);
+
+const formatScholarshipType = (type?: string) => {
+  switch (type?.toUpperCase()) {
+    case "FULL":
+      return "Fully Funded";
+    case "PARTIAL":
+      return "Partial Funding";
+    case "TUITION":
+      return "Tuition Only";
+    case "LIVING_EXPENSES":
+      return "Living Allowance";
+    default:
+      return type || "Scholarship";
+  }
+};
+
+const formatLevel = (level: string) => {
+  switch (level.toUpperCase()) {
+    case "UNDERGRADUATE":
+      return "Undergraduate";
+    case "POSTGRADUATE":
+      return "Postgraduate";
+    case "PHD":
+      return "PhD";
+    default:
+      return level;
+  }
+};
+
+const formatAmount = (scholarship: ScholarshipDto) => {
+  const type = scholarship.scholarshipType?.toUpperCase();
+
+  if (type === "FULL") {
+    return "Full Funding";
+  }
+
+  if (scholarship.amount && scholarship.currency) {
+    return `${scholarship.currency} ${Number(scholarship.amount).toLocaleString()}`;
+  }
+
+  if (scholarship.coveragePercentage) {
+    return `${scholarship.coveragePercentage}% Coverage`;
+  }
+
+  return "Contact for details";
+};
+
+const mapBackendScholarship = (
+  scholarship: ScholarshipDto,
+): BrowseScholarship => {
+  const eligibleCountries = scholarship.eligibleCountries ?? [];
+  const eligibleFields = scholarship.eligibleFields ?? [];
+  const eligibleLevels = (scholarship.eligibleLevels ?? []).map(formatLevel);
+  const category = formatScholarshipType(scholarship.scholarshipType);
+
+  return {
+    id: scholarship.id,
+    source: "backend",
+    title: scholarship.title,
+    provider:
+      scholarship.providerName || `Institution #${scholarship.institutionId}`,
+    country:
+      eligibleCountries.length > 1
+        ? eligibleCountries.join(", ")
+        : eligibleCountries[0] || "Multiple countries",
+    amount: formatAmount(scholarship),
+    deadline: scholarship.applicationDeadline || "",
+    fieldOfStudy:
+      eligibleFields.length > 0 ? eligibleFields.join(", ") : "All Fields",
+    level: eligibleLevels.length > 0 ? eligibleLevels.join(", ") : "All Levels",
+    description:
+      scholarship.description || "Scholarship details are being updated.",
+    requirements:
+      scholarship.requiredDocuments && scholarship.requiredDocuments.length > 0
+        ? scholarship.requiredDocuments
+        : ["Review the complete scholarship details before applying"],
+    benefits:
+      scholarship.benefits && scholarship.benefits.length > 0
+        ? scholarship.benefits
+        : [formatAmount(scholarship)],
+    imageUrl:
+      scholarship.imageUrl ||
+      "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1080",
+    category,
+    featured: Boolean(scholarship.isFeatured),
+    coveragePercentage: scholarship.coveragePercentage,
+    eligibleCountries,
+    eligibleFields,
+    eligibleLevels,
+    minGpa: scholarship.minGpa,
+    minAge: scholarship.minAge,
+    maxAge: scholarship.maxAge,
+    requiredEnglishTest: scholarship.requiredEnglishTest,
+    minEnglishScore: scholarship.minEnglishScore,
+    minAlPasses: scholarship.minAlPasses,
+    requiredAlStream: scholarship.requiredAlStream,
+    minZScore: scholarship.minZScore,
+    requiresFinancialNeed: scholarship.requiresFinancialNeed,
+    maxHouseholdIncome: scholarship.maxHouseholdIncome,
+    sportsAchievementRequired: scholarship.sportsAchievementRequired,
+    leadershipRequired: scholarship.leadershipRequired,
+    firstGenerationPriority: scholarship.firstGenerationPriority,
+    disabilityFriendly: scholarship.disabilityFriendly,
+    returnToHomeRequired: scholarship.returnToHomeRequired,
+    startDate: scholarship.startDate,
+    endDate: scholarship.endDate,
+    durationMonths: scholarship.durationMonths,
+    requiredDocuments: scholarship.requiredDocuments,
+    additionalRequirements: scholarship.additionalRequirements,
+    selectionCriteria: scholarship.selectionCriteria,
+    applicationSteps: scholarship.applicationSteps,
+    applicationUrl: scholarship.applicationUrl,
+    contactEmail: scholarship.contactEmail,
+    contactPhone: scholarship.contactPhone,
+    websiteUrl: scholarship.websiteUrl,
+    viewsCount: scholarship.viewsCount,
+    totalApplications: scholarship.totalApplications,
+  };
+};
 
 export function ScholarshipsPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -370,14 +548,61 @@ export function ScholarshipsPage() {
   const [selectedCountry, setSelectedCountry] = useState("All Countries");
   const [selectedLevel, setSelectedLevel] = useState("All Levels");
   const [showFilters, setShowFilters] = useState(false);
+  const [apiScholarships, setApiScholarships] = useState<BrowseScholarship[]>(
+    [],
+  );
+  const [isLoadingScholarships, setIsLoadingScholarships] = useState(true);
+  const [scholarshipLoadError, setScholarshipLoadError] = useState("");
+  const [selectedScholarship, setSelectedScholarship] =
+    useState<BrowseScholarship | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
 
   // Temporary filter states (for the dropdowns before applying)
   const [tempCategory, setTempCategory] = useState("All");
   const [tempCountry, setTempCountry] = useState("All Countries");
   const [tempLevel, setTempLevel] = useState("All Levels");
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchScholarships = async () => {
+      setIsLoadingScholarships(true);
+      setScholarshipLoadError("");
+
+      try {
+        const response = await scholarshipApi.getScholarships();
+        if (isMounted) {
+          setApiScholarships((response.data ?? []).map(mapBackendScholarship));
+        }
+      } catch (error) {
+        console.error("Failed to load scholarships:", error);
+        if (isMounted) {
+          setApiScholarships([]);
+          setScholarshipLoadError(
+            "Showing sample scholarships while the backend is unavailable.",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingScholarships(false);
+        }
+      }
+    };
+
+    fetchScholarships();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const availableScholarships =
+    apiScholarships.length > 0 ? apiScholarships : sampleScholarships;
+
   // Filter scholarships based on search and filters
-  const filteredScholarships = scholarships.filter((scholarship) => {
+  const filteredScholarships = availableScholarships.filter((scholarship) => {
     const matchesSearchQuery = matchesSearch(searchQuery, [
       scholarship.title,
       scholarship.provider,
@@ -395,10 +620,14 @@ export function ScholarshipsPage() {
       selectedCategory === "All" || scholarship.category === selectedCategory;
     const matchesCountry =
       selectedCountry === "All Countries" ||
-      scholarship.country === selectedCountry;
+      scholarship.country.toLowerCase().includes(selectedCountry.toLowerCase());
     const matchesLevel =
       selectedLevel === "All Levels" ||
-      scholarship.level.includes(selectedLevel);
+      scholarship.level.toLowerCase().includes(selectedLevel.toLowerCase()) ||
+      (selectedLevel === "Bachelors" &&
+        scholarship.level.toLowerCase().includes("undergraduate")) ||
+      (selectedLevel === "Masters" &&
+        scholarship.level.toLowerCase().includes("postgraduate"));
 
     return (
       matchesSearchQuery && matchesCategory && matchesCountry && matchesLevel
@@ -431,7 +660,34 @@ export function ScholarshipsPage() {
     setSearchQuery("");
   };
 
-  const getDaysUntilDeadline = (deadline: string) => {
+  const handleViewDetails = async (scholarship: BrowseScholarship) => {
+    setSelectedScholarship(scholarship);
+    setIsDetailsOpen(true);
+    setDetailsError("");
+
+    if (scholarship.source !== "backend") {
+      return;
+    }
+
+    setIsDetailsLoading(true);
+    try {
+      const response = await scholarshipApi.getScholarship(scholarship.id);
+      setSelectedScholarship(mapBackendScholarship(response.data));
+    } catch (error) {
+      console.error("Failed to load scholarship details:", error);
+      setDetailsError(
+        "Could not refresh the latest backend details. Showing the list details instead.",
+      );
+    } finally {
+      setIsDetailsLoading(false);
+    }
+  };
+
+  const getDaysUntilDeadline = (deadline?: string) => {
+    if (!deadline) {
+      return Number.POSITIVE_INFINITY;
+    }
+
     const today = new Date();
     const deadlineDate = new Date(deadline);
     const diffTime = deadlineDate.getTime() - today.getTime();
@@ -621,6 +877,14 @@ export function ScholarshipsPage() {
         )}
       </Card>
 
+      {(isLoadingScholarships || scholarshipLoadError) && (
+        <div className="mb-8 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          {isLoadingScholarships
+            ? "Loading latest scholarships from the backend..."
+            : scholarshipLoadError}
+        </div>
+      )}
+
       {/* Featured Scholarships */}
       {featuredScholarships.length > 0 && (
         <div className="mb-16">
@@ -641,6 +905,7 @@ export function ScholarshipsPage() {
                 index={index}
                 featured={true}
                 daysUntilDeadline={getDaysUntilDeadline(scholarship.deadline)}
+                onViewDetails={handleViewDetails}
               />
             ))}
           </div>
@@ -701,6 +966,7 @@ export function ScholarshipsPage() {
                 index={index}
                 featured={false}
                 daysUntilDeadline={getDaysUntilDeadline(scholarship.deadline)}
+                onViewDetails={handleViewDetails}
               />
             ))}
           </div>
@@ -742,7 +1008,276 @@ export function ScholarshipsPage() {
           </p>
         </div>
       </div>
+
+      <ScholarshipDetailsDialog
+        scholarship={selectedScholarship}
+        open={isDetailsOpen}
+        onOpenChange={setIsDetailsOpen}
+        isLoading={isDetailsLoading}
+        error={detailsError}
+      />
     </div>
+  );
+}
+
+function formatDate(date?: string) {
+  if (!date) return "Not specified";
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  return parsed.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function DetailSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function DetailList({ items }: { items?: string[] }) {
+  const visibleItems = (items ?? []).filter(Boolean);
+
+  if (visibleItems.length === 0) {
+    return <p className="text-sm text-slate-500">Not specified</p>;
+  }
+
+  return (
+    <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {visibleItems.map((item) => (
+        <li
+          key={item}
+          className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+        >
+          {item}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value?: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+      <div className="mt-1 text-sm font-semibold text-slate-900">
+        {value !== undefined && value !== null && value !== ""
+          ? value
+          : "Not specified"}
+      </div>
+    </div>
+  );
+}
+
+function ScholarshipDetailsDialog({
+  scholarship,
+  open,
+  onOpenChange,
+  isLoading,
+  error,
+}: {
+  scholarship: BrowseScholarship | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  isLoading: boolean;
+  error: string;
+}) {
+  if (!scholarship) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent />
+      </Dialog>
+    );
+  }
+
+  const eligibilityItems = [
+    scholarship.eligibleCountries?.length
+      ? `Eligible countries: ${scholarship.eligibleCountries.join(", ")}`
+      : `Eligible countries: ${scholarship.country}`,
+    scholarship.eligibleFields?.length
+      ? `Fields: ${scholarship.eligibleFields.join(", ")}`
+      : `Fields: ${scholarship.fieldOfStudy}`,
+    scholarship.eligibleLevels?.length
+      ? `Study levels: ${scholarship.eligibleLevels.join(", ")}`
+      : `Study levels: ${scholarship.level}`,
+    scholarship.minGpa ? `Minimum GPA: ${scholarship.minGpa}` : "",
+    scholarship.minAge || scholarship.maxAge
+      ? `Age range: ${scholarship.minAge ?? "Any"}-${scholarship.maxAge ?? "Any"}`
+      : "",
+    scholarship.minAlPasses
+      ? `Minimum A/L passes: ${scholarship.minAlPasses}`
+      : "",
+    scholarship.requiredAlStream
+      ? `Required A/L stream: ${scholarship.requiredAlStream}`
+      : "",
+    scholarship.minZScore ? `Minimum Z-score: ${scholarship.minZScore}` : "",
+    scholarship.requiredEnglishTest
+      ? `${scholarship.requiredEnglishTest} score: ${scholarship.minEnglishScore ?? "Required"}`
+      : "",
+    scholarship.requiresFinancialNeed
+      ? `Financial need required${scholarship.maxHouseholdIncome ? ` up to ${scholarship.maxHouseholdIncome}` : ""}`
+      : "",
+    scholarship.leadershipRequired ? "Leadership experience required" : "",
+    scholarship.sportsAchievementRequired
+      ? "Sports achievement required"
+      : "",
+    scholarship.firstGenerationPriority
+      ? "Priority for first-generation university students"
+      : "",
+    scholarship.disabilityFriendly ? "Disability-friendly scholarship" : "",
+    scholarship.returnToHomeRequired
+      ? "Return-to-home commitment required"
+      : "",
+  ].filter(Boolean);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-2xl leading-tight">
+            {scholarship.title}
+          </DialogTitle>
+          <DialogDescription>
+            {scholarship.provider} - {scholarship.country}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-8">
+          <div className="relative h-56 overflow-hidden rounded-lg">
+            <ImageWithFallback
+              src={scholarship.imageUrl}
+              alt={scholarship.title}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+            <div className="absolute bottom-4 left-4 flex flex-wrap gap-2">
+              <Badge className="bg-white text-slate-900">
+                {scholarship.category}
+              </Badge>
+              {scholarship.featured && (
+                <Badge className="bg-yellow-500 text-white">Featured</Badge>
+              )}
+            </div>
+          </div>
+
+          {isLoading && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              Loading latest backend details...
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              {error}
+            </div>
+          )}
+
+          <p className="text-slate-700 leading-relaxed">
+            {scholarship.description}
+          </p>
+
+          <DetailSection title="Key Details">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <DetailField label="Funding" value={scholarship.amount} />
+              <DetailField label="Deadline" value={formatDate(scholarship.deadline)} />
+              <DetailField label="Study Level" value={scholarship.level} />
+              <DetailField
+                label="Duration"
+                value={
+                  scholarship.durationMonths
+                    ? `${scholarship.durationMonths} months`
+                    : scholarship.startDate || scholarship.endDate
+                      ? `${formatDate(scholarship.startDate)} to ${formatDate(scholarship.endDate)}`
+                      : undefined
+                }
+              />
+            </div>
+          </DetailSection>
+
+          <DetailSection title="Benefits & Coverage">
+            <DetailList items={scholarship.benefits} />
+          </DetailSection>
+
+          <DetailSection title="Eligibility">
+            <DetailList items={eligibilityItems} />
+          </DetailSection>
+
+          <DetailSection title="Required Documents">
+            <DetailList
+              items={scholarship.requiredDocuments ?? scholarship.requirements}
+            />
+          </DetailSection>
+
+          <DetailSection title="Selection Criteria">
+            <DetailList items={scholarship.selectionCriteria} />
+          </DetailSection>
+
+          <DetailSection title="Application Steps">
+            <DetailList items={scholarship.applicationSteps} />
+          </DetailSection>
+
+          {scholarship.additionalRequirements && (
+            <DetailSection title="Additional Requirements">
+              <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                {scholarship.additionalRequirements}
+              </p>
+            </DetailSection>
+          )}
+
+          <DetailSection title="Contact & Links">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <DetailField label="Email" value={scholarship.contactEmail} />
+              <DetailField label="Phone" value={scholarship.contactPhone} />
+              <DetailField label="Applications" value={scholarship.totalApplications} />
+              <DetailField label="Views" value={scholarship.viewsCount} />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              {scholarship.applicationUrl && (
+                <Button asChild className="bg-blue-600 hover:bg-blue-700 text-white">
+                  <a
+                    href={scholarship.applicationUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Apply Now
+                  </a>
+                </Button>
+              )}
+              {scholarship.websiteUrl && (
+                <Button variant="outline" asChild>
+                  <a
+                    href={scholarship.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Visit Provider Website
+                  </a>
+                </Button>
+              )}
+              {scholarship.contactEmail && (
+                <Button variant="outline" asChild>
+                  <a href={`mailto:${scholarship.contactEmail}`}>
+                    Email Contact
+                  </a>
+                </Button>
+              )}
+            </div>
+          </DetailSection>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -751,11 +1286,13 @@ function ScholarshipCard({
   index,
   featured,
   daysUntilDeadline,
+  onViewDetails,
 }: {
-  scholarship: (typeof scholarships)[0];
+  scholarship: BrowseScholarship;
   index: number;
   featured: boolean;
   daysUntilDeadline: number;
+  onViewDetails: (scholarship: BrowseScholarship) => void;
 }) {
   const isUrgent = daysUntilDeadline <= 30 && daysUntilDeadline > 0;
   const isExpired = daysUntilDeadline < 0;
@@ -820,10 +1357,15 @@ function ScholarshipCard({
                 ? "Expired"
                 : isUrgent
                   ? `${daysUntilDeadline} days left`
-                  : new Date(scholarship.deadline).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                    })}
+                  : scholarship.deadline
+                    ? new Date(scholarship.deadline).toLocaleDateString(
+                        "en-GB",
+                        {
+                          day: "numeric",
+                          month: "short",
+                        },
+                      )
+                    : "No deadline"}
             </Badge>
           </div>
         </div>
@@ -859,7 +1401,10 @@ function ScholarshipCard({
           </p>
 
           {/* CTA */}
-          <Button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white shadow-md">
+          <Button
+            onClick={() => onViewDetails(scholarship)}
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white shadow-md"
+          >
             View Details
           </Button>
         </div>

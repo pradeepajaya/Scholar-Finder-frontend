@@ -138,6 +138,54 @@ export interface ScholarshipMatchDto {
   isEligible: boolean;
 }
 
+export interface ScholarshipDto {
+  id: number;
+  institutionId: number;
+  providerName?: string;
+  title: string;
+  description?: string;
+  scholarshipType?: string;
+  coveragePercentage?: number;
+  amount?: number;
+  currency?: string;
+  eligibleCountries?: string[];
+  eligibleFields?: string[];
+  eligibleLevels?: string[];
+  minGpa?: number;
+  minAge?: number;
+  maxAge?: number;
+  requiredEnglishTest?: string;
+  minEnglishScore?: number;
+  minAlPasses?: number;
+  requiredAlStream?: string;
+  minZScore?: number;
+  requiresFinancialNeed?: boolean;
+  maxHouseholdIncome?: string;
+  sportsAchievementRequired?: boolean;
+  leadershipRequired?: boolean;
+  firstGenerationPriority?: boolean;
+  disabilityFriendly?: boolean;
+  returnToHomeRequired?: boolean;
+  applicationDeadline?: string;
+  startDate?: string;
+  endDate?: string;
+  durationMonths?: number;
+  requiredDocuments?: string[];
+  additionalRequirements?: string;
+  benefits?: string[];
+  selectionCriteria?: string[];
+  applicationSteps?: string[];
+  applicationUrl?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  websiteUrl?: string;
+  imageUrl?: string;
+  status?: string;
+  isFeatured?: boolean;
+  totalApplications?: number;
+  viewsCount?: number;
+}
+
 export interface MatchResponse {
   studentId: number;
   studentName: string;
@@ -349,6 +397,12 @@ export const authApi = {
 export const scholarshipApi = {
   upsertStudentProfile: (request: StudentProfileRequest) =>
     apiClient.post<StudentProfileResponse>('/scholarships/students', request),
+  getStudentProfile: (userId: number) =>
+    apiClient.get<StudentProfileResponse>(`/scholarships/students/${userId}`),
+  getScholarships: () =>
+    apiClient.get<ScholarshipDto[]>('/scholarships'),
+  getScholarship: (id: number) =>
+    apiClient.get<ScholarshipDto>(`/scholarships/${id}`),
   getMatches: (request: MatchRequest) =>
     apiClient.post<MatchResponse>('/scholarships/matches', request),
 };

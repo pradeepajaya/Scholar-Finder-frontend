@@ -166,7 +166,7 @@ public class ScholarshipService {
             .id(scholarship.getId())
             .title(scholarship.getTitle())
             .description(scholarship.getDescription())
-            .provider("Institution #" + scholarship.getInstitutionId()) // TODO: Fetch actual institution name
+            .provider(resolveProviderName(scholarship))
             .country(scholarship.getEligibleCountries() != null && scholarship.getEligibleCountries().length > 0 
                      ? scholarship.getEligibleCountries()[0] : "Multiple")
             .scholarshipType(scholarship.getScholarshipType())
@@ -178,12 +178,21 @@ public class ScholarshipService {
             .applicationDeadline(scholarship.getApplicationDeadline())
             .deadlineDisplay(deadlineDisplay)
             .isFeatured(Boolean.TRUE.equals(scholarship.getIsFeatured()))
+            .applyLink(scholarship.getApplicationUrl())
+            .imageUrl(scholarship.getImageUrl())
             .matchPercentage(matchResult.getMatchPercentage())
             .matchQuality(matchResult.getMatchQuality().name())
             .matchedCriteria(matchedStrings)
             .unmatchedCriteria(unmatchedStrings)
             .isEligible(matchResult.isEligible())
             .build();
+    }
+
+    private String resolveProviderName(Scholarship scholarship) {
+        if (scholarship.getProviderName() != null && !scholarship.getProviderName().isBlank()) {
+            return scholarship.getProviderName();
+        }
+        return "Institution #" + scholarship.getInstitutionId();
     }
 
     private String formatAmount(Scholarship scholarship) {

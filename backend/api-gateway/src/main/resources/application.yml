@@ -8,76 +8,78 @@ spring:
 
   cloud:
     gateway:
-      # Enable service discovery routing
-      discovery:
-        locator:
-          enabled: true
-          lower-case-service-id: true
+      server:
+        webflux:
+          # Enable service discovery routing
+          discovery:
+            locator:
+              enabled: true
+              lower-case-service-id: true
 
-      # Default filters for all routes
-      default-filters:
-        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+          # Default filters for all routes
+          default-filters:
+            - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
 
-      # Global CORS configuration
-      globalcors:
-        corsConfigurations:
-          "[/**]":
-            allowedOrigins:
-              - "http://localhost:5173"
-              - "http://localhost:3000"
-            allowedMethods:
-              - GET
-              - POST
-              - PUT
-              - DELETE
-              - PATCH
-              - OPTIONS
-            allowedHeaders:
-              - "*"
-            allowCredentials: true
-            maxAge: 3600
+          # Global CORS configuration
+          globalcors:
+            corsConfigurations:
+              "[/**]":
+                allowedOrigins:
+                  - "http://localhost:5173"
+                  - "http://localhost:3000"
+                allowedMethods:
+                  - GET
+                  - POST
+                  - PUT
+                  - DELETE
+                  - PATCH
+                  - OPTIONS
+                allowedHeaders:
+                  - "*"
+                allowCredentials: true
+                maxAge: 3600
 
-      # Route definitions
-      routes:
-        # Auth Service
-        - id: auth-service
-          uri: lb://auth-service
-          predicates:
-            - Path=/api/auth/**
-          filters:
-            - RewritePath=/api/auth/(?<segment>.*), /api/auth/${segment}
+          # Route definitions
+          routes:
+            # Auth Service
+            - id: auth-service
+              uri: lb://auth-service
+              predicates:
+                - Path=/api/auth/**
+              filters:
+                - RewritePath=/api/auth/(?<segment>.*), /api/auth/${segment}
 
-        # User Service
-        - id: user-service
-          uri: lb://user-service
-          predicates:
-            - Path=/api/users/**, /api/students/**, /api/institutions/**
-          filters:
-            - RewritePath=/api/(?<segment>.*), /api/${segment}
+            # User Service
+            - id: user-service
+              uri: lb://user-service
+              predicates:
+                - Path=/api/users/**, /api/students/**, /api/institutions/**
+              filters:
+                - RewritePath=/api/(?<segment>.*), /api/${segment}
 
-        # Scholarship Service
-        - id: scholarship-service
-          uri: lb://scholarship-service
-          predicates:
-            - Path=/api/scholarships/**, /api/applications/**
-          filters:
-            - RewritePath=/api/(?<segment>.*), /api/${segment}
+            # Scholarship Service
+            - id: scholarship-service
+              uri: lb://scholarship-service
+              predicates:
+                - Path=/api/scholarships/**, /api/applications/**
+              filters:
+                - RewritePath=/api/(?<segment>.*), /api/${segment}
 
-        # Content Service (News, Blogs, Testimonials)
-        - id: content-service
-          uri: lb://content-service
-          predicates:
-            - Path=/api/news/**, /api/blogs/**, /api/categories/**, /api/tags/**, /api/testimonials/**
-          filters:
-            - RewritePath=/api/(?<segment>.*), /api/${segment}
+            # Content Service (News, Blogs, Testimonials)
+            - id: content-service
+              uri: lb://content-service
+              predicates:
+                - Path=/api/news/**, /api/blogs/**, /api/categories/**, /api/tags/**, /api/testimonials/**
+              filters:
+                - RewritePath=/api/(?<segment>.*), /api/${segment}
 
-        # Notification Service (Contact & Notifications)
-        - id: notification-service
-          uri: lb://notification-service
-          predicates:
-            - Path=/api/contact/**
-          filters:
-            - RewritePath=/api/(?<segment>.*), /api/${segment}
+            # Notification Service (Contact & Notifications)
+            - id: notification-service
+              uri: lb://notification-service
+              predicates:
+                - Path=/api/contact/**
+              filters:
+                - RewritePath=/api/(?<segment>.*), /api/${segment}
 
 # Eureka Client Configuration
 eureka:
@@ -111,8 +113,56 @@ spring:
   config:
     activate:
       on-profile: docker
+  cloud:
+    gateway:
+      server:
+        webflux:
+          discovery:
+            locator:
+              enabled: false
+          routes:
+            # Auth Service
+            - id: auth-service
+              uri: http://auth-service:8081
+              predicates:
+                - Path=/api/auth/**
+              filters:
+                - RewritePath=/api/auth/(?<segment>.*), /api/auth/${segment}
+
+            # User Service
+            - id: user-service
+              uri: http://user-service:8082
+              predicates:
+                - Path=/api/users/**, /api/students/**, /api/institutions/**
+              filters:
+                - RewritePath=/api/(?<segment>.*), /api/${segment}
+
+            # Scholarship Service
+            - id: scholarship-service
+              uri: http://scholarship-service:8083
+              predicates:
+                - Path=/api/scholarships/**, /api/applications/**
+              filters:
+                - RewritePath=/api/(?<segment>.*), /api/${segment}
+
+            # Content Service (News, Blogs, Testimonials)
+            - id: content-service
+              uri: http://content-service:8084
+              predicates:
+                - Path=/api/news/**, /api/blogs/**, /api/categories/**, /api/tags/**, /api/testimonials/**
+              filters:
+                - RewritePath=/api/(?<segment>.*), /api/${segment}
+
+            # Notification Service (Contact & Notifications)
+            - id: notification-service
+              uri: http://notification-service:8085
+              predicates:
+                - Path=/api/contact/**
+              filters:
+                - RewritePath=/api/(?<segment>.*), /api/${segment}
 
 eureka:
   client:
+    enabled: false
     service-url:
       defaultZone: http://eureka:eureka123@discovery-service:8761/eureka/

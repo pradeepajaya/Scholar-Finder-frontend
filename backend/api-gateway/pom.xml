@@ -19,14 +19,14 @@
     
     <properties>
         <java.version>17</java.version>
-        <spring-cloud.version>2023.0.0</spring-cloud.version>
+        <spring-cloud.version>2025.1.1</spring-cloud.version>
     </properties>
     
-    <spring-cloud.version>2025.1.1</spring-cloud.version>
+    <dependencies>
     <!-- Spring Cloud Gateway -->
     <dependency>
         <groupId>org.springframework.cloud</groupId>
-        <artifactId>spring-cloud-starter-gateway</artifactId>
+        <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
     </dependency>
         
     <!-- Eureka Client -->
