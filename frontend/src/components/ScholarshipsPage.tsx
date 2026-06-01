@@ -1752,16 +1752,22 @@ function ScholarshipApplicationDialog({
       attemptedSubmit && Boolean(options.required) && !formData[field].trim();
 
     return (
-      <div className="space-y-2.5">
+      <div
+        className={`space-y-2.5 rounded-xl border bg-white p-4 shadow-sm transition ${
+          hasError
+            ? "border-red-300 ring-1 ring-red-100"
+            : "border-slate-200 hover:border-slate-300"
+        }`}
+      >
         <div className="flex items-center justify-between gap-2">
           <Label
             htmlFor={`application-${String(field)}`}
-            className="text-base font-semibold text-slate-800"
+            className="text-sm font-semibold tracking-wide text-slate-700"
           >
             {label}
           </Label>
           {options.required && (
-            <span className="text-sm font-semibold text-blue-700">
+            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold uppercase text-blue-700">
               Required
             </span>
           )}
@@ -1772,8 +1778,10 @@ function ScholarshipApplicationDialog({
           value={formData[field]}
           onChange={(event) => updateField(field, event.target.value)}
           placeholder={options.placeholder}
-          className={`h-12 rounded-lg px-4 text-base ${
-            hasError ? "border-red-300 focus-visible:ring-red-400" : ""
+          className={`h-12 rounded-lg border bg-white px-4 text-base shadow-sm placeholder:text-slate-400 ${
+            hasError
+              ? "border-red-300 focus-visible:border-red-400 focus-visible:ring-red-200"
+              : "border-slate-300 focus-visible:border-blue-500 focus-visible:ring-blue-200"
           }`}
         />
         {hasError && (
@@ -1798,16 +1806,22 @@ function ScholarshipApplicationDialog({
       attemptedSubmit && Boolean(options.required) && !formData[field].trim();
 
     return (
-      <div className="space-y-2.5">
+      <div
+        className={`space-y-2.5 rounded-xl border bg-white p-4 shadow-sm transition ${
+          hasError
+            ? "border-red-300 ring-1 ring-red-100"
+            : "border-slate-200 hover:border-slate-300"
+        }`}
+      >
         <div className="flex items-center justify-between gap-2">
           <Label
             htmlFor={`application-${String(field)}`}
-            className="text-base font-semibold text-slate-800"
+            className="text-sm font-semibold tracking-wide text-slate-700"
           >
             {label}
           </Label>
           {options.required && (
-            <span className="text-sm font-semibold text-blue-700">
+            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold uppercase text-blue-700">
               Required
             </span>
           )}
@@ -1819,7 +1833,9 @@ function ScholarshipApplicationDialog({
           className={`rounded-lg px-4 py-3 text-base leading-relaxed ${
             options.minHeight ?? "min-h-32"
           } ${
-            hasError ? "border-red-300 focus-visible:ring-red-400" : ""
+            hasError
+              ? "border-red-300 focus-visible:border-red-400 focus-visible:ring-red-200"
+              : "border-slate-300 focus-visible:border-blue-500 focus-visible:ring-blue-200"
           }`}
           placeholder={options.placeholder}
         />
@@ -2173,14 +2189,14 @@ function ScholarshipApplicationDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[calc(100vh-2rem)] overflow-y-auto p-0"
+        className="h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] overflow-hidden p-0"
         style={{
           width: "96vw",
           maxWidth: "108rem",
         }}
       >
-        <div className="flex min-h-0 flex-col">
-          <DialogHeader className="sticky top-0 z-20 border-b border-slate-200 bg-white px-6 py-6 pr-16 sm:px-8 lg:px-12 lg:pr-20">
+        <div className="flex h-full min-h-0 flex-col bg-slate-50">
+          <DialogHeader className="border-b border-slate-200 bg-white px-6 py-6 pr-16 shadow-sm sm:px-8 lg:px-12 lg:pr-20">
             <DialogTitle className="text-3xl leading-tight">
               Apply for {scholarship.title}
             </DialogTitle>
@@ -2213,151 +2229,153 @@ function ScholarshipApplicationDialog({
           ) : (
             <form
               onSubmit={handleSubmit}
-              className="flex flex-col"
+              className="flex min-h-0 flex-1 flex-col"
             >
-              <div className="grid xl:grid-cols-[minmax(0,1fr)_24rem]">
-                <div className="px-6 py-8 pb-12 sm:px-8 lg:px-12">
-                  {submitError && (
-                    <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-base text-red-800">
-                      <div className="flex items-start gap-3">
-                        <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-                        <p>{submitError}</p>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="grid min-h-full xl:grid-cols-[minmax(0,1fr)_24rem]">
+                  <div className="bg-white px-6 py-8 pb-12 sm:px-8 lg:px-12">
+                    {submitError && (
+                      <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-base text-red-800">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                          <p>{submitError}</p>
+                        </div>
                       </div>
+                    )}
+
+                    <div className="mb-8 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
+                      {applicationSteps.map((step, index) => {
+                        const StepIcon = step.icon;
+                        const isActive = currentStep === index;
+
+                        return (
+                          <button
+                            key={step.title}
+                            type="button"
+                            onClick={() => setCurrentStep(index)}
+                            className={`h-full rounded-xl border bg-white p-4 text-left shadow-sm transition ${
+                              isActive
+                                ? "border-blue-300 ring-1 ring-blue-200"
+                                : "border-slate-200 hover:border-blue-200 hover:shadow"
+                            }`}
+                          >
+                            <div className="flex h-full items-center gap-3">
+                              <span
+                                className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                                  step.complete
+                                    ? "bg-green-100 text-green-700"
+                                    : isActive
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-slate-100 text-slate-500"
+                                }`}
+                              >
+                                {step.complete ? (
+                                  <CheckCircle2 className="h-5 w-5" />
+                                ) : (
+                                  <StepIcon className="h-5 w-5" />
+                                )}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-base font-semibold text-slate-900">
+                                  {step.title}
+                                </span>
+                                <span className="hidden text-sm text-slate-500 sm:block">
+                                  {step.description}
+                                </span>
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
-                  )}
 
-                  <div className="mb-8 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
-                    {applicationSteps.map((step, index) => {
-                      const StepIcon = step.icon;
-                      const isActive = currentStep === index;
+                    {renderStepContent()}
+                  </div>
 
-                      return (
-                        <button
-                          key={step.title}
-                          type="button"
-                          onClick={() => setCurrentStep(index)}
-                          className={`h-full rounded-lg border p-4 text-left transition ${
-                            isActive
-                              ? "border-blue-300 bg-blue-50 text-blue-950"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                          }`}
-                        >
-                          <div className="flex h-full items-center gap-3">
+                  <aside className="hidden border-l border-slate-200 bg-slate-100 p-8 xl:block">
+                    <div className="sticky top-4 space-y-5">
+                      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <p className="text-base font-semibold text-slate-900">
+                          Application Progress
+                        </p>
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className="h-full rounded-full bg-blue-600 transition-all"
+                            style={{ width: `${progressPercentage}%` }}
+                          />
+                        </div>
+                        <p className="mt-2 text-sm text-slate-600">
+                          {completedStepCount} of {applicationSteps.length} steps
+                          ready
+                        </p>
+                      </div>
+
+                      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        {applicationSteps.map((step, index) => (
+                          <button
+                            key={step.title}
+                            type="button"
+                            onClick={() => setCurrentStep(index)}
+                            className={`flex w-full items-center gap-3 rounded-lg border p-4 text-left ${
+                              currentStep === index
+                                ? "border-blue-300 bg-blue-50"
+                                : "border-transparent bg-transparent hover:border-slate-200"
+                            }`}
+                          >
                             <span
-                              className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
                                 step.complete
                                   ? "bg-green-100 text-green-700"
-                                  : isActive
-                                    ? "bg-blue-100 text-blue-700"
-                                    : "bg-slate-100 text-slate-500"
+                                  : "bg-slate-200 text-slate-600"
                               }`}
                             >
                               {step.complete ? (
                                 <CheckCircle2 className="h-5 w-5" />
                               ) : (
-                                <StepIcon className="h-5 w-5" />
+                                index + 1
                               )}
                             </span>
-                            <span className="min-w-0">
-                              <span className="block text-base font-semibold">
+                            <span>
+                              <span className="block text-base font-semibold text-slate-900">
                                 {step.title}
                               </span>
-                              <span className="hidden text-sm text-slate-500 sm:block">
+                              <span className="text-sm text-slate-500">
                                 {step.description}
                               </span>
                             </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-white p-5 text-base text-slate-700 shadow-sm">
+                        <p className="font-semibold text-slate-900">
+                          Scholarship Summary
+                        </p>
+                        <div className="mt-3 space-y-3">
+                          <div className="flex items-start gap-2">
+                            <DollarSign className="mt-0.5 h-5 w-5 text-blue-600" />
+                            <span>{scholarship.amount}</span>
                           </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {renderStepContent()}
+                          <div className="flex items-start gap-2">
+                            <Calendar className="mt-0.5 h-5 w-5 text-blue-600" />
+                            <span>{scholarship.deadline || "Not specified"}</span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <FileText className="mt-0.5 h-5 w-5 text-blue-600" />
+                            <span>
+                              {requiredDocuments.length === 0
+                                ? "No required documents"
+                                : `${attachedDocumentCount} / ${requiredDocuments.length} documents attached`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </aside>
                 </div>
-
-                <aside className="hidden border-l border-slate-200 bg-slate-50 p-8 xl:block">
-                  <div className="sticky top-0 space-y-5">
-                    <div>
-                      <p className="text-base font-semibold text-slate-900">
-                        Application Progress
-                      </p>
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-                        <div
-                          className="h-full rounded-full bg-blue-600 transition-all"
-                          style={{ width: `${progressPercentage}%` }}
-                        />
-                      </div>
-                      <p className="mt-2 text-sm text-slate-600">
-                        {completedStepCount} of {applicationSteps.length} steps
-                        ready
-                      </p>
-                    </div>
-
-                    <div className="space-y-3">
-                      {applicationSteps.map((step, index) => (
-                        <button
-                          key={step.title}
-                          type="button"
-                          onClick={() => setCurrentStep(index)}
-                          className={`flex w-full items-center gap-3 rounded-lg border p-4 text-left ${
-                            currentStep === index
-                              ? "border-blue-300 bg-white"
-                              : "border-transparent bg-transparent"
-                          }`}
-                        >
-                          <span
-                            className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-                              step.complete
-                                ? "bg-green-100 text-green-700"
-                                : "bg-slate-200 text-slate-600"
-                            }`}
-                          >
-                            {step.complete ? (
-                              <CheckCircle2 className="h-5 w-5" />
-                            ) : (
-                              index + 1
-                            )}
-                          </span>
-                          <span>
-                            <span className="block text-base font-semibold text-slate-900">
-                              {step.title}
-                            </span>
-                            <span className="text-sm text-slate-500">
-                              {step.description}
-                            </span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-white p-5 text-base text-slate-700">
-                      <p className="font-semibold text-slate-900">
-                        Scholarship Summary
-                      </p>
-                      <div className="mt-3 space-y-3">
-                        <div className="flex items-start gap-2">
-                          <DollarSign className="mt-0.5 h-5 w-5 text-blue-600" />
-                          <span>{scholarship.amount}</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <Calendar className="mt-0.5 h-5 w-5 text-blue-600" />
-                          <span>{scholarship.deadline || "Not specified"}</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <FileText className="mt-0.5 h-5 w-5 text-blue-600" />
-                          <span>
-                            {requiredDocuments.length === 0
-                              ? "No required documents"
-                              : `${attachedDocumentCount} / ${requiredDocuments.length} documents attached`}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </aside>
               </div>
 
-              <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white px-6 py-5 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] sm:px-8 lg:px-12 lg:py-6">
+              <div className="z-20 border-t border-slate-200 bg-white px-6 py-5 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] sm:px-8 lg:px-12 lg:py-6">
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <Button
                     type="button"
