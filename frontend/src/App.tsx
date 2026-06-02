@@ -16,6 +16,7 @@ import StudentLogin from "./components/StudentLogin";
 import { InstitutionLogin } from "./components/InstitutionLogin";
 import { AdminLogin } from "./components/AdminLogin";
 import { InstitutionDashboard } from "./components/InstitutionDashboard";
+import { Toaster } from "sonner";
 import { STUDENT_ID_KEY } from "./services/api";
 
 type Page =
@@ -258,6 +259,8 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      <Toaster position="top-right" richColors closeButton />
     </div>
   );
 }

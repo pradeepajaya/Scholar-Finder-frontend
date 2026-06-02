@@ -29,12 +29,78 @@ import {
   DollarSign,
   ArrowLeft,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { PostScholarshipForm } from './PostScholarshipForm';
 
 type TabType = 'overview' | 'scholarships' | 'candidates' | 'analytics' | 'announcements';
+type CandidateStatus = 'pending' | 'shortlisted' | 'selected' | 'rejected';
+type CandidateReviewAction = 'download' | 'shortlisted' | 'selected' | 'rejected' | 'announcement';
+
+type Candidate = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  location: string;
+  scholarship: string;
+  matchScore: number;
+  gpa: number;
+  alResults: string;
+  status: CandidateStatus;
+  appliedDate: string;
+  level: string;
+};
+
+type ScholarshipStatus = 'active' | 'closed';
+
+type Scholarship = {
+  id: number;
+  title: string;
+  status: ScholarshipStatus;
+  deadline: string;
+  applicants: number;
+  shortlisted: number;
+  selected: number;
+  amount: string;
+  duration: string;
+  level: string;
+};
+
+type ScholarshipEditableField = keyof Pick<
+  Scholarship,
+  'title' | 'status' | 'deadline' | 'amount' | 'duration' | 'level'
+>;
+
+type ScholarshipRequirementProfile = {
+  summary: string;
+  minimumGpa: number;
+  requiredLevel: string;
+  minimumAlResults: string;
+  requiredQualifications: string[];
+  selectionCriteria: string[];
+  requiredDocuments: string[];
+};
+
+type CandidateEvidenceProfile = {
+  currentProgram: string;
+  fieldOfStudy: string;
+  englishTest: string;
+  englishScore: string;
+  experienceHighlights: string[];
+  leadershipHighlights: string[];
+  certifications: string[];
+  uploadedDocuments: string[];
+  personalStatementSummary: string;
+};
+
+type RequirementCheck = {
+  requirement: string;
+  matched: boolean;
+  evidence: string;
+};
 
 // Mock data for scholarships
-const mockScholarships = [
+const mockScholarships: Scholarship[] = [
   {
     id: 1,
     title: 'Commonwealth Scholarship 2026',
@@ -74,7 +140,7 @@ const mockScholarships = [
 ];
 
 // Mock data for candidates
-const mockCandidates = [
+const mockCandidates: Candidate[] = [
   {
     id: 1,
     name: 'Saman Perera',
@@ -329,33 +395,441 @@ const mockCandidates = [
   },
 ];
 
+const scholarshipRequirementProfiles: Record<string, ScholarshipRequirementProfile> = {
+  'Commonwealth Scholarship 2026': {
+    summary:
+      'Commonwealth prioritizes academically strong students with leadership potential and a clear contribution plan.',
+    minimumGpa: 3.7,
+    requiredLevel: 'Undergraduate',
+    minimumAlResults: 'AAB',
+    requiredQualifications: [
+      'Strong academic performance in A/L or equivalent',
+      'Clear motivation aligned with scholarship mission',
+      'English proficiency for international study',
+    ],
+    selectionCriteria: [
+      'Academic excellence',
+      'Leadership and service record',
+      'Quality of personal statement',
+      'Document completeness and authenticity',
+    ],
+    requiredDocuments: [
+      'Academic transcript',
+      'A/L results sheet',
+      'Personal statement',
+      'Recommendation letter',
+      'English test report',
+    ],
+  },
+  'Graduate Research Fellowship': {
+    summary:
+      'This fellowship is research-driven and favors candidates with top grades, research readiness, and domain focus.',
+    minimumGpa: 3.85,
+    requiredLevel: 'Postgraduate',
+    minimumAlResults: 'AAA',
+    requiredQualifications: [
+      'High GPA in relevant degree',
+      'Research aptitude and critical writing',
+      'Evidence of discipline-specific depth',
+    ],
+    selectionCriteria: [
+      'Research potential',
+      'Academic consistency',
+      'Statement quality and objective clarity',
+      'Readiness of required documentation',
+    ],
+    requiredDocuments: [
+      'Degree transcript',
+      'Research proposal summary',
+      'Reference letter',
+      'English test report',
+      'Updated CV',
+    ],
+  },
+  'Engineering Excellence Award': {
+    summary:
+      'Engineering Excellence looks for technically strong candidates with project evidence and dependable academic results.',
+    minimumGpa: 3.75,
+    requiredLevel: 'Undergraduate',
+    minimumAlResults: 'AAB',
+    requiredQualifications: [
+      'Consistent academic track record',
+      'Strong quantitative foundation',
+      'Technical or project achievements',
+    ],
+    selectionCriteria: [
+      'GPA and A/L strength',
+      'Technical project evidence',
+      'Leadership and teamwork capability',
+      'Complete and verifiable documents',
+    ],
+    requiredDocuments: [
+      'Academic transcript',
+      'A/L results sheet',
+      'Project portfolio or summary',
+      'Recommendation letter',
+      'Personal statement',
+    ],
+  },
+};
+
+const buildFallbackRequirementProfile = (
+  candidate: Candidate,
+): ScholarshipRequirementProfile => ({
+  summary:
+    `${candidate.scholarship} was edited in this session. Review the candidate against the latest institution criteria before making a final decision.`,
+  minimumGpa: candidate.gpa,
+  requiredLevel: candidate.level,
+  minimumAlResults: candidate.alResults,
+  requiredQualifications: [
+    'Meets the current scholarship profile reviewed by the institution',
+    'Submitted academic evidence for manual verification',
+  ],
+  selectionCriteria: [
+    'Academic fit',
+    'Document completeness',
+    'Institution review outcome',
+  ],
+  requiredDocuments: [
+    'Academic transcript',
+    'Personal statement',
+    'Reference letter',
+  ],
+});
+
+const candidateEvidenceOverrides: Record<number, Partial<CandidateEvidenceProfile>> = {
+  1: {
+    currentProgram: 'BSc in Computer Science, University of Colombo (Year 3)',
+    fieldOfStudy: 'Computer Science and Data Systems',
+    englishTest: 'IELTS',
+    englishScore: '7.5',
+    experienceHighlights: [
+      'Finalist in National AI Challenge 2025',
+      'Built scholarship matching mini-platform for student society',
+    ],
+    leadershipHighlights: [
+      'President, Faculty Computing Society',
+      'Volunteer mentor for first-year students',
+    ],
+    certifications: ['Google Data Analytics', 'AWS Cloud Practitioner'],
+  },
+  3: {
+    currentProgram: 'BSc in Biotechnology, University of Ruhuna (Final Year)',
+    fieldOfStudy: 'Biotechnology and Biomedical Research',
+    englishTest: 'TOEFL',
+    englishScore: '108',
+    experienceHighlights: [
+      'Co-authored undergraduate paper on antimicrobial resistance',
+      'Research assistant in molecular diagnostics lab',
+    ],
+    leadershipHighlights: ['Coordinator, Women in STEM community chapter'],
+    certifications: ['Good Clinical Practice (GCP)'],
+  },
+  16: {
+    currentProgram: 'BEng in Mechanical Engineering, University of Moratuwa (Year 4)',
+    fieldOfStudy: 'Mechanical Engineering',
+    englishTest: 'IELTS',
+    englishScore: '7.0',
+    experienceHighlights: [
+      'Led industry-linked capstone design project',
+      'Internship in manufacturing automation',
+    ],
+    leadershipHighlights: ['Team lead, Robotics Club'],
+    certifications: ['SolidWorks Professional Certification'],
+  },
+};
+
+const gradeScoreMap: Record<string, number> = {
+  A: 5,
+  B: 4,
+  C: 3,
+  D: 2,
+  S: 1,
+  F: 0,
+};
+
+const normalizeAlResults = (value: string) =>
+  value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+
+const alScore = (value: string) =>
+  normalizeAlResults(value)
+    .split('')
+    .reduce((score, grade) => score + (gradeScoreMap[grade] ?? 0), 0);
+
+const meetsAlRequirement = (actual: string, required: string) =>
+  alScore(actual) >= alScore(required);
+
+const buildCandidateEvidenceProfile = (
+  candidate: Candidate,
+): CandidateEvidenceProfile => {
+  const fallback: CandidateEvidenceProfile = {
+    currentProgram: `${candidate.level} program candidate in applied studies`,
+    fieldOfStudy:
+      candidate.level === 'Postgraduate'
+        ? 'Research-focused interdisciplinary studies'
+        : 'STEM and development-focused track',
+    englishTest: candidate.level === 'Postgraduate' ? 'TOEFL' : 'IELTS',
+    englishScore: candidate.level === 'Postgraduate' ? '102' : '7.0',
+    experienceHighlights: [
+      'Consistent performance in coursework and assessments',
+      'Active participation in academic and project activities',
+    ],
+    leadershipHighlights: [
+      'Contributed to peer mentoring and student collaboration initiatives',
+    ],
+    certifications: ['Academic Writing Workshop Certificate'],
+    uploadedDocuments: [
+      'Academic transcript',
+      'A/L results sheet',
+      'Personal statement',
+      'Reference letter',
+    ],
+    personalStatementSummary:
+      'Applicant explains academic goals clearly and links the scholarship to long-term impact plans.',
+  };
+
+  const overrides = candidateEvidenceOverrides[candidate.id] ?? {};
+
+  return {
+    ...fallback,
+    ...overrides,
+    uploadedDocuments:
+      overrides.uploadedDocuments ?? fallback.uploadedDocuments,
+    experienceHighlights:
+      overrides.experienceHighlights ?? fallback.experienceHighlights,
+    leadershipHighlights:
+      overrides.leadershipHighlights ?? fallback.leadershipHighlights,
+    certifications: overrides.certifications ?? fallback.certifications,
+  };
+};
+
+const buildRequirementChecks = (
+  candidate: Candidate,
+  scholarshipProfile: ScholarshipRequirementProfile,
+  evidenceProfile: CandidateEvidenceProfile,
+): RequirementCheck[] => {
+  const hasEnglishEvidence = Boolean(evidenceProfile.englishTest.trim());
+  const hasLeadershipEvidence = evidenceProfile.leadershipHighlights.length > 0;
+  const hasRequiredDocuments = scholarshipProfile.requiredDocuments.every(
+    (requiredDoc) =>
+      evidenceProfile.uploadedDocuments.some((uploadedDoc) =>
+        uploadedDoc.toLowerCase().includes(requiredDoc.toLowerCase()),
+      ),
+  );
+
+  return [
+    {
+      requirement: `Minimum GPA ${scholarshipProfile.minimumGpa}`,
+      matched: candidate.gpa >= scholarshipProfile.minimumGpa,
+      evidence: `Candidate GPA: ${candidate.gpa}`,
+    },
+    {
+      requirement: `Required level: ${scholarshipProfile.requiredLevel}`,
+      matched:
+        candidate.level.toLowerCase() ===
+        scholarshipProfile.requiredLevel.toLowerCase(),
+      evidence: `Candidate level: ${candidate.level}`,
+    },
+    {
+      requirement: `Minimum A/L profile: ${scholarshipProfile.minimumAlResults}`,
+      matched: meetsAlRequirement(
+        candidate.alResults,
+        scholarshipProfile.minimumAlResults,
+      ),
+      evidence: `Candidate A/L: ${candidate.alResults}`,
+    },
+    {
+      requirement: 'English proficiency evidence',
+      matched: hasEnglishEvidence,
+      evidence: `${evidenceProfile.englishTest} (${evidenceProfile.englishScore})`,
+    },
+    {
+      requirement: 'Leadership and engagement evidence',
+      matched: hasLeadershipEvidence,
+      evidence: hasLeadershipEvidence
+        ? evidenceProfile.leadershipHighlights[0]
+        : 'No strong leadership evidence provided',
+    },
+    {
+      requirement: 'Required documents complete',
+      matched: hasRequiredDocuments,
+      evidence: `${evidenceProfile.uploadedDocuments.length} supporting documents attached`,
+    },
+  ];
+};
+
+const getStatusPillClasses = (status: CandidateStatus) => {
+  if (status === 'selected') return 'bg-green-100 text-green-700';
+  if (status === 'shortlisted') return 'bg-blue-100 text-blue-700';
+  if (status === 'rejected') return 'bg-red-100 text-red-700';
+  return 'bg-slate-100 text-slate-700';
+};
+
+const candidateStatusLabels: Record<CandidateStatus, string> = {
+  pending: 'pending review',
+  shortlisted: 'shortlisted',
+  selected: 'selected',
+  rejected: 'rejected',
+};
+
 export function InstitutionDashboard() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [scholarships, setScholarships] = useState<Scholarship[]>(mockScholarships);
+  const [candidates, setCandidates] = useState<Candidate[]>(mockCandidates);
   const [selectedScholarship, setSelectedScholarship] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [timePeriod, setTimePeriod] = useState('30');
-  const [editingDeadline, setEditingDeadline] = useState<number | null>(null);
-  const [newDeadline, setNewDeadline] = useState('');
+  const [editingScholarshipId, setEditingScholarshipId] = useState<number | null>(null);
+  const [scholarshipDraft, setScholarshipDraft] = useState<Scholarship | null>(null);
   const [selectedScholarshipDetail, setSelectedScholarshipDetail] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedCandidateProfile, setSelectedCandidateProfile] = useState<number | null>(null);
+  const [activeReviewAction, setActiveReviewAction] = useState<Record<number, CandidateReviewAction | null>>({});
   const [showPostScholarshipForm, setShowPostScholarshipForm] = useState(false);
 
-  const handleDeadlineChange = (scholarshipId: number) => {
-    console.log(`Changing deadline for scholarship ${scholarshipId} to ${newDeadline}`);
-    setEditingDeadline(null);
-    setNewDeadline('');
+  const handleStartScholarshipEdit = (scholarship: Scholarship) => {
+    setEditingScholarshipId(scholarship.id);
+    setScholarshipDraft({ ...scholarship });
+  };
+
+  const handleCancelScholarshipEdit = () => {
+    setEditingScholarshipId(null);
+    setScholarshipDraft(null);
+  };
+
+  const handleScholarshipDraftChange = <Key extends ScholarshipEditableField>(
+    field: Key,
+    value: Scholarship[Key],
+  ) => {
+    setScholarshipDraft((currentDraft) =>
+      currentDraft ? { ...currentDraft, [field]: value } : currentDraft,
+    );
+  };
+
+  const handleSaveScholarship = () => {
+    if (!scholarshipDraft) return;
+
+    const trimmedTitle = scholarshipDraft.title.trim();
+
+    if (!trimmedTitle) {
+      toast.error('Scholarship title is required.');
+      return;
+    }
+
+    const previousTitle = scholarships.find(
+      (scholarship) => scholarship.id === scholarshipDraft.id,
+    )?.title;
+    const nextScholarship: Scholarship = {
+      ...scholarshipDraft,
+      title: trimmedTitle,
+      amount: scholarshipDraft.amount.trim(),
+      duration: scholarshipDraft.duration.trim(),
+      level: scholarshipDraft.level.trim(),
+    };
+
+    setScholarships((previous) =>
+      previous.map((scholarship) =>
+        scholarship.id === nextScholarship.id ? nextScholarship : scholarship,
+      ),
+    );
+
+    if (previousTitle && previousTitle !== nextScholarship.title) {
+      setCandidates((previous) =>
+        previous.map((candidate) =>
+          candidate.scholarship === previousTitle
+            ? { ...candidate, scholarship: nextScholarship.title }
+            : candidate,
+        ),
+      );
+
+      if (selectedScholarship === previousTitle) {
+        setSelectedScholarship(nextScholarship.title);
+      }
+    }
+
+    setEditingScholarshipId(null);
+    setScholarshipDraft(null);
+    toast.success(`${nextScholarship.title} updated.`);
   };
 
   const handleStatusChange = (candidateId: number, newStatus: string) => {
-    console.log(`Changing candidate ${candidateId} status to ${newStatus}`);
+    const validStatuses: CandidateStatus[] = [
+      'pending',
+      'shortlisted',
+      'selected',
+      'rejected',
+    ];
+
+    if (!validStatuses.includes(newStatus as CandidateStatus)) {
+      return;
+    }
+
+    const nextStatus = newStatus as CandidateStatus;
+    const currentCandidate = candidates.find(
+      (candidate) => candidate.id === candidateId,
+    );
+
+    if (!currentCandidate) return;
+
+    if (currentCandidate.status === nextStatus) {
+      toast.info(
+        `${currentCandidate.name} is already ${candidateStatusLabels[nextStatus]}.`,
+      );
+      return;
+    }
+
+    setCandidates((previous) =>
+      previous.map((candidate) =>
+        candidate.id === candidateId
+          ? { ...candidate, status: nextStatus }
+          : candidate,
+      ),
+    );
+    const nextReviewAction: CandidateReviewAction | null =
+      nextStatus === 'pending' ? null : nextStatus;
+
+    setActiveReviewAction((previous) => ({
+      ...previous,
+      [candidateId]: nextReviewAction,
+    }));
+
+    if (nextStatus === 'selected') {
+      toast.success(
+        `${currentCandidate.name} has been selected for ${currentCandidate.scholarship}.`,
+      );
+      return;
+    }
+
+    if (nextStatus === 'shortlisted') {
+      toast.success(
+        `${currentCandidate.name} has been shortlisted for further review.`,
+      );
+      return;
+    }
+
+    if (nextStatus === 'rejected') {
+      toast.error(`${currentCandidate.name} has been rejected.`);
+      return;
+    }
+
+    toast.info(
+      `${currentCandidate.name} moved back to pending review.`,
+    );
   };
 
   const handleAnnouncement = (candidateId: number) => {
-    console.log(`Sending announcement to candidate ${candidateId}`);
+    const candidate = candidates.find((item) => item.id === candidateId);
+    if (!candidate) return;
+
+    setActiveReviewAction((previous) => ({
+      ...previous,
+      [candidateId]: 'announcement',
+    }));
+
+    toast.success(`Selection announcement sent to ${candidate.name}.`);
   };
 
-  const filteredCandidates = mockCandidates
+  const filteredCandidates = candidates
     .filter((c) => selectedScholarship === 'all' || c.scholarship === selectedScholarship)
     .filter(
       (c) =>
@@ -365,6 +839,151 @@ export function InstitutionDashboard() {
     .filter((c) => statusFilter === 'all' || c.status === statusFilter)
     .sort((a, b) => b.matchScore - a.matchScore) // Sort by match score (highest first)
     .slice(0, 10); // Limit to top 10 candidates
+
+  const selectedCandidate = selectedCandidateProfile
+    ? candidates.find((candidate) => candidate.id === selectedCandidateProfile) ?? null
+    : null;
+
+  const selectedScholarshipProfile = selectedCandidate
+    ? scholarshipRequirementProfiles[selectedCandidate.scholarship] ??
+    buildFallbackRequirementProfile(selectedCandidate)
+    : null;
+
+  const selectedEvidenceProfile = selectedCandidate
+    ? buildCandidateEvidenceProfile(selectedCandidate)
+    : null;
+
+  const selectedRequirementChecks =
+    selectedCandidate && selectedScholarshipProfile && selectedEvidenceProfile
+      ? buildRequirementChecks(
+        selectedCandidate,
+        selectedScholarshipProfile,
+        selectedEvidenceProfile,
+      )
+      : [];
+
+  const matchedRequirementCount = selectedRequirementChecks.filter(
+    (check) => check.matched,
+  ).length;
+
+  const requirementCoverage = selectedRequirementChecks.length
+    ? Math.round(
+      (matchedRequirementCount / selectedRequirementChecks.length) * 100,
+    )
+    : 0;
+
+  const missingRequiredDocuments =
+    selectedScholarshipProfile && selectedEvidenceProfile
+      ? selectedScholarshipProfile.requiredDocuments.filter(
+        (requiredDocument) =>
+          !selectedEvidenceProfile.uploadedDocuments.some((uploadedDocument) =>
+            uploadedDocument
+              .toLowerCase()
+              .includes(requiredDocument.toLowerCase()),
+          ),
+      )
+      : [];
+
+  const decisionRecommendation = !selectedCandidate
+    ? ''
+    : selectedCandidate.matchScore >= 94 && requirementCoverage >= 80
+      ? 'High-confidence candidate. Strong fit for selection if interview confirms motivation.'
+      : selectedCandidate.matchScore >= 88 && requirementCoverage >= 65
+        ? 'Good candidate. Shortlist recommended and request any missing evidence before final selection.'
+        : 'Fit is moderate. Review missing requirements carefully before progressing this application.';
+
+  const handleDownloadApplication = (
+    candidate: Candidate,
+    scholarshipProfile: ScholarshipRequirementProfile,
+    evidenceProfile: CandidateEvidenceProfile,
+    requirementChecks: RequirementCheck[],
+  ) => {
+    try {
+      const lines = [
+        'Scholar-Finder Candidate Application Review',
+        '========================================',
+        '',
+        'Candidate Information',
+        `- Name: ${candidate.name}`,
+        `- Email: ${candidate.email}`,
+        `- Phone: ${candidate.phone}`,
+        `- Location: ${candidate.location}`,
+        `- Applied Date: ${candidate.appliedDate}`,
+        `- Current Status: ${candidate.status}`,
+        '',
+        'Scholarship Information',
+        `- Scholarship: ${candidate.scholarship}`,
+        `- Match Score: ${candidate.matchScore}%`,
+        `- Requirement Coverage: ${requirementCoverage}%`,
+        '',
+        'Academic Qualifications',
+        `- GPA: ${candidate.gpa}`,
+        `- A/L Results: ${candidate.alResults}`,
+        `- Level: ${candidate.level}`,
+        `- Current Program: ${evidenceProfile.currentProgram}`,
+        `- Field of Study: ${evidenceProfile.fieldOfStudy}`,
+        `- English Test: ${evidenceProfile.englishTest} (${evidenceProfile.englishScore})`,
+        '',
+        'Scholarship Requirement Profile',
+        `- Summary: ${scholarshipProfile.summary}`,
+        `- Minimum GPA: ${scholarshipProfile.minimumGpa}`,
+        `- Required Level: ${scholarshipProfile.requiredLevel}`,
+        `- Minimum A/L Results: ${scholarshipProfile.minimumAlResults}`,
+        '',
+        'Requirement Match Breakdown',
+        ...requirementChecks.map(
+          (check) =>
+            `- [${check.matched ? 'MATCHED' : 'NEEDS REVIEW'}] ${check.requirement} | Evidence: ${check.evidence}`,
+        ),
+        '',
+        'Selection Criteria',
+        ...scholarshipProfile.selectionCriteria.map((criterion) => `- ${criterion}`),
+        '',
+        'Uploaded Documents',
+        ...evidenceProfile.uploadedDocuments.map((doc) => `- ${doc}`),
+        '',
+        'Missing Required Documents',
+        ...(missingRequiredDocuments.length > 0
+          ? missingRequiredDocuments.map((doc) => `- ${doc}`)
+          : ['- None']),
+        '',
+        'Experience Highlights',
+        ...evidenceProfile.experienceHighlights.map((item) => `- ${item}`),
+        '',
+        'Leadership Highlights',
+        ...evidenceProfile.leadershipHighlights.map((item) => `- ${item}`),
+        '',
+        'Certifications',
+        ...evidenceProfile.certifications.map((item) => `- ${item}`),
+        '',
+        'Personal Statement Summary',
+        evidenceProfile.personalStatementSummary,
+      ];
+
+      const fileContent = lines.join('\n');
+      const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const fileSafeName = candidate.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+      link.href = url;
+      link.download = `${fileSafeName || 'candidate'}-full-application.txt`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setActiveReviewAction((previous) => ({
+        ...previous,
+        [candidate.id]: 'download',
+      }));
+
+      toast.success(`Downloaded full application for ${candidate.name}.`);
+    } catch (error) {
+      console.error('Failed to download application file:', error);
+      toast.error('Could not generate the application download. Please try again.');
+    }
+  };
 
   const renderOverview = () => (
     <div className="space-y-6">
@@ -442,8 +1061,8 @@ export function InstitutionDashboard() {
                   </div>
                   <p className="text-sm text-slate-600">{candidate.appliedDate}</p>
                 </div>
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   variant="outline"
                   onClick={() => setSelectedCandidateProfile(candidate.id)}
                 >
@@ -461,18 +1080,18 @@ export function InstitutionDashboard() {
   const renderScholarships = () => {
     // If a scholarship is selected for detail view, show that instead
     if (selectedScholarshipDetail) {
-      const scholarship = mockScholarships.find(s => s.id === selectedScholarshipDetail);
+      const scholarship = scholarships.find(s => s.id === selectedScholarshipDetail);
       if (!scholarship) return null;
 
-      const scholarshipCandidates = mockCandidates
+      const scholarshipCandidates = candidates
         .filter(c => c.scholarship === scholarship.title)
         .sort((a, b) => b.matchScore - a.matchScore);
 
       return (
         <div className="space-y-6">
           {/* Back Button */}
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => setSelectedScholarshipDetail(null)}
             className="mb-4"
           >
@@ -495,11 +1114,10 @@ export function InstitutionDashboard() {
                 </div>
               </div>
               <span
-                className={`px-4 py-2 rounded-full text-sm font-semibold shadow-sm ${
-                  scholarship.status === 'active'
-                    ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white'
-                    : 'bg-gradient-to-r from-slate-400 to-slate-500 text-white'
-                }`}
+                className={`px-4 py-2 rounded-full text-sm font-semibold shadow-sm ${scholarship.status === 'active'
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white'
+                  : 'bg-gradient-to-r from-slate-400 to-slate-500 text-white'
+                  }`}
               >
                 {scholarship.status.toUpperCase()}
               </span>
@@ -576,7 +1194,7 @@ export function InstitutionDashboard() {
 
             <div className="space-y-3">
               {scholarshipCandidates.map((candidate, index) => (
-                <div 
+                <div
                   key={candidate.id}
                   className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-200 rounded-lg hover:shadow-md transition-all"
                 >
@@ -609,12 +1227,11 @@ export function InstitutionDashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      candidate.status === 'selected' ? 'bg-green-100 text-green-700' :
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${candidate.status === 'selected' ? 'bg-green-100 text-green-700' :
                       candidate.status === 'shortlisted' ? 'bg-blue-100 text-blue-700' :
-                      candidate.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                      'bg-slate-100 text-slate-700'
-                    }`}>
+                        candidate.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                          'bg-slate-100 text-slate-700'
+                      }`}>
                       {candidate.status.charAt(0).toUpperCase() + candidate.status.slice(1)}
                     </span>
                     <Button size="sm" variant="outline">
@@ -635,7 +1252,7 @@ export function InstitutionDashboard() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-slate-900">Manage Scholarships</h2>
-          <Button 
+          <Button
             className="bg-purple-600 hover:bg-purple-700 text-white"
             onClick={() => setShowPostScholarshipForm(true)}
           >
@@ -645,7 +1262,7 @@ export function InstitutionDashboard() {
         </div>
 
         <div className="grid gap-6">
-          {mockScholarships.map((scholarship) => (
+          {scholarships.map((scholarship) => (
             <Card key={scholarship.id} className="p-8 bg-gradient-to-br from-blue-50 via-white to-blue-50 shadow-lg hover:shadow-xl transition-all duration-300 border border-blue-100 bg-[rgba(107,171,246,0.18)]">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex-1">
@@ -655,82 +1272,118 @@ export function InstitutionDashboard() {
                     </div>
                     <h3 className="text-2xl font-bold text-slate-900">{scholarship.title}</h3>
                     <span
-                      className={`px-4 py-1.5 rounded-full text-xs font-semibold shadow-sm ${
-                        scholarship.status === 'active'
-                          ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white'
-                          : 'bg-gradient-to-r from-slate-400 to-slate-500 text-white'
-                      }`}
+                      className={`px-4 py-1.5 rounded-full text-xs font-semibold shadow-sm ${scholarship.status === 'active'
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white'
+                        : 'bg-gradient-to-r from-slate-400 to-slate-500 text-white'
+                        }`}
                     >
                       {scholarship.status.toUpperCase()}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-6">
-                    <div className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-blue-100">
-                      <div className="flex items-center gap-2 mb-2">
-                        <DollarSign className="w-4 h-4 text-blue-600" />
-                        <p className="text-sm font-medium text-slate-600">Amount</p>
-                      </div>
-                      <p className="text-lg font-bold text-slate-900">{scholarship.amount}</p>
-                    </div>
-                    <div className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-blue-100">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Clock className="w-4 h-4 text-purple-600" />
-                        <p className="text-sm font-medium text-slate-600">Duration</p>
-                      </div>
-                      <p className="text-lg font-bold text-slate-900">{scholarship.duration}</p>
-                    </div>
-                    <div className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-blue-100">
-                      <div className="flex items-center gap-2 mb-2">
-                        <GraduationCap className="w-4 h-4 text-indigo-600" />
-                        <p className="text-sm font-medium text-slate-600">Level</p>
-                      </div>
-                      <p className="text-lg font-bold text-slate-900">{scholarship.level}</p>
-                    </div>
-                    <div className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-blue-100">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Calendar className="w-4 h-4 text-orange-600" />
-                        <p className="text-sm font-medium text-slate-600">Deadline</p>
-                      </div>
-                      {editingDeadline === scholarship.id ? (
-                        <div className="flex items-center gap-2 mt-1">
+                  {editingScholarshipId === scholarship.id && scholarshipDraft ? (
+                    <div className="mt-6 rounded-xl border border-purple-200 bg-white/90 p-5 shadow-sm">
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        <div>
+                          <Label>Title</Label>
+                          <Input
+                            value={scholarshipDraft.title}
+                            onChange={(event) =>
+                              handleScholarshipDraftChange('title', event.target.value)
+                            }
+                            className="mt-2"
+                          />
+                        </div>
+                        <div>
+                          <Label>Status</Label>
+                          <select
+                            value={scholarshipDraft.status}
+                            onChange={(event) =>
+                              handleScholarshipDraftChange(
+                                'status',
+                                event.target.value as ScholarshipStatus,
+                              )
+                            }
+                            className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-2"
+                          >
+                            <option value="active">Active</option>
+                            <option value="closed">Closed</option>
+                          </select>
+                        </div>
+                        <div>
+                          <Label>Deadline</Label>
                           <Input
                             type="date"
-                            value={newDeadline}
-                            onChange={(e) => setNewDeadline(e.target.value)}
-                            className="h-8 text-xs"
+                            value={scholarshipDraft.deadline}
+                            onChange={(event) =>
+                              handleScholarshipDraftChange('deadline', event.target.value)
+                            }
+                            className="mt-2"
                           />
-                          <Button
-                            size="sm"
-                            onClick={() => handleDeadlineChange(scholarship.id)}
-                            className="h-8 px-2 bg-green-600 hover:bg-green-700"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setEditingDeadline(null)}
-                            className="h-8 px-2"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </Button>
                         </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <p className="text-lg font-bold text-slate-900">{scholarship.deadline}</p>
-                          <button
-                            onClick={() => {
-                              setEditingDeadline(scholarship.id);
-                              setNewDeadline(scholarship.deadline);
-                            }}
-                            className="text-blue-600 hover:text-blue-700 p-1 hover:bg-blue-50 rounded transition-colors"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
+                        <div>
+                          <Label>Amount</Label>
+                          <Input
+                            value={scholarshipDraft.amount}
+                            onChange={(event) =>
+                              handleScholarshipDraftChange('amount', event.target.value)
+                            }
+                            className="mt-2"
+                          />
                         </div>
-                      )}
+                        <div>
+                          <Label>Duration</Label>
+                          <Input
+                            value={scholarshipDraft.duration}
+                            onChange={(event) =>
+                              handleScholarshipDraftChange('duration', event.target.value)
+                            }
+                            className="mt-2"
+                          />
+                        </div>
+                        <div>
+                          <Label>Level</Label>
+                          <Input
+                            value={scholarshipDraft.level}
+                            onChange={(event) =>
+                              handleScholarshipDraftChange('level', event.target.value)
+                            }
+                            className="mt-2"
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-6">
+                      <div className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-blue-100">
+                        <div className="flex items-center gap-2 mb-2">
+                          <DollarSign className="w-4 h-4 text-blue-600" />
+                          <p className="text-sm font-medium text-slate-600">Amount</p>
+                        </div>
+                        <p className="text-lg font-bold text-slate-900">{scholarship.amount}</p>
+                      </div>
+                      <div className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-blue-100">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock className="w-4 h-4 text-purple-600" />
+                          <p className="text-sm font-medium text-slate-600">Duration</p>
+                        </div>
+                        <p className="text-lg font-bold text-slate-900">{scholarship.duration}</p>
+                      </div>
+                      <div className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-blue-100">
+                        <div className="flex items-center gap-2 mb-2">
+                          <GraduationCap className="w-4 h-4 text-indigo-600" />
+                          <p className="text-sm font-medium text-slate-600">Level</p>
+                        </div>
+                        <p className="text-lg font-bold text-slate-900">{scholarship.level}</p>
+                      </div>
+                      <div className="bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-blue-100">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Calendar className="w-4 h-4 text-orange-600" />
+                          <p className="text-sm font-medium text-slate-600">Deadline</p>
+                        </div>
+                        <p className="text-lg font-bold text-slate-900">{scholarship.deadline}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -760,8 +1413,8 @@ export function InstitutionDashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3 w-full md:w-auto">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => setSelectedScholarshipDetail(scholarship.id)}
                       className="flex-1 md:flex-initial bg-white hover:bg-blue-50 border-blue-300 text-blue-700 font-semibold hover:border-blue-400 shadow-sm"
@@ -769,17 +1422,40 @@ export function InstitutionDashboard() {
                       <Eye className="w-4 h-4 mr-2" />
                       View Details
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    {editingScholarshipId === scholarship.id ? (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={handleSaveScholarship}
+                          className="flex-1 md:flex-initial bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm"
+                        >
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          Save
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleCancelScholarshipEdit}
+                          className="flex-1 md:flex-initial bg-white hover:bg-slate-50 border-slate-300 text-slate-700 font-semibold shadow-sm"
+                        >
+                          <XCircle className="w-4 h-4 mr-2" />
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleStartScholarshipEdit(scholarship)}
+                        className="flex-1 md:flex-initial bg-white hover:bg-purple-50 border-purple-300 text-purple-700 font-semibold hover:border-purple-400 shadow-sm"
+                      >
+                        <Edit className="w-4 h-4 mr-2" />
+                        Edit
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
                       size="sm"
-                      className="flex-1 md:flex-initial bg-white hover:bg-purple-50 border-purple-300 text-purple-700 font-semibold hover:border-purple-400 shadow-sm"
-                    >
-                      <Edit className="w-4 h-4 mr-2" />
-                      Edit
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
                       className="bg-white hover:bg-red-50 border-red-300 text-red-600 hover:text-red-700 font-semibold hover:border-red-400 shadow-sm"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -817,7 +1493,7 @@ export function InstitutionDashboard() {
             className="px-4 py-2 border border-slate-300 rounded-lg text-sm"
           >
             <option value="all">All Scholarships</option>
-            {mockScholarships.map((s) => (
+            {scholarships.map((s) => (
               <option key={s.id} value={s.title}>
                 {s.title}
               </option>
@@ -843,17 +1519,16 @@ export function InstitutionDashboard() {
 
       <div className="grid gap-4">
         {filteredCandidates.map((candidate, index) => (
-          <Card 
-            key={candidate.id} 
-            className={`p-6 hover:shadow-lg transition-shadow ${
-              candidate.status === 'selected' 
-                ? 'bg-gradient-to-br from-green-100 via-green-50 to-white border-green-300' 
-                : candidate.status === 'shortlisted' 
-                ? 'bg-gradient-to-br from-blue-100 via-blue-50 to-white border-blue-300' 
+          <Card
+            key={candidate.id}
+            className={`p-6 hover:shadow-lg transition-shadow ${candidate.status === 'selected'
+              ? 'bg-gradient-to-br from-green-100 via-green-50 to-white border-green-300'
+              : candidate.status === 'shortlisted'
+                ? 'bg-gradient-to-br from-blue-100 via-blue-50 to-white border-blue-300'
                 : candidate.status === 'rejected'
-                ? 'bg-gradient-to-br from-red-100 via-red-50 to-white border-red-300'
-                : 'bg-gradient-to-br from-slate-100 via-slate-50 to-white border-slate-300'
-            }`}
+                  ? 'bg-gradient-to-br from-red-100 via-red-50 to-white border-red-300'
+                  : 'bg-gradient-to-br from-slate-100 via-slate-50 to-white border-slate-300'
+              }`}
           >
             <div className="flex flex-col lg:flex-row gap-6">
               {/* Candidate Info */}
@@ -861,15 +1536,14 @@ export function InstitutionDashboard() {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-4">
                     <div className="relative">
-                      <div className={`p-4 rounded-full ${
-                        candidate.status === 'selected' 
-                          ? 'bg-gradient-to-br from-green-600 to-emerald-600' 
-                          : candidate.status === 'shortlisted' 
-                          ? 'bg-gradient-to-br from-blue-600 to-indigo-600' 
+                      <div className={`p-4 rounded-full ${candidate.status === 'selected'
+                        ? 'bg-gradient-to-br from-green-600 to-emerald-600'
+                        : candidate.status === 'shortlisted'
+                          ? 'bg-gradient-to-br from-blue-600 to-indigo-600'
                           : candidate.status === 'rejected'
-                          ? 'bg-gradient-to-br from-red-600 to-rose-600'
-                          : 'bg-gradient-to-br from-slate-600 to-slate-700'
-                      }`}>
+                            ? 'bg-gradient-to-br from-red-600 to-rose-600'
+                            : 'bg-gradient-to-br from-slate-600 to-slate-700'
+                        }`}>
                         <GraduationCap className="w-6 h-6 text-white" />
                       </div>
                       <div className="absolute -top-2 -right-2 bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white">
@@ -939,15 +1613,14 @@ export function InstitutionDashboard() {
                 <select
                   value={candidate.status}
                   onChange={(e) => handleStatusChange(candidate.id, e.target.value)}
-                  className={`px-3 py-2 border rounded-lg text-sm font-medium ${
-                    candidate.status === 'selected'
-                      ? 'border-green-300 bg-green-50 text-green-700'
-                      : candidate.status === 'shortlisted'
+                  className={`px-3 py-2 border rounded-lg text-sm font-medium ${candidate.status === 'selected'
+                    ? 'border-green-300 bg-green-50 text-green-700'
+                    : candidate.status === 'shortlisted'
                       ? 'border-blue-300 bg-blue-50 text-blue-700'
                       : candidate.status === 'rejected'
-                      ? 'border-red-300 bg-red-50 text-red-700'
-                      : 'border-slate-300 bg-white text-slate-700'
-                  }`}
+                        ? 'border-red-300 bg-red-50 text-red-700'
+                        : 'border-slate-300 bg-white text-slate-700'
+                    }`}
                 >
                   <option value="pending">Pending Review</option>
                   <option value="shortlisted">Shortlisted</option>
@@ -955,9 +1628,9 @@ export function InstitutionDashboard() {
                   <option value="rejected">Rejected</option>
                 </select>
 
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="w-full"
                   onClick={() => setSelectedCandidateProfile(candidate.id)}
                 >
@@ -1056,7 +1729,7 @@ export function InstitutionDashboard() {
         <Card className="p-6">
           <h3 className="font-semibold text-slate-900 mb-4">Top Performing Scholarships</h3>
           <div className="space-y-3">
-            {mockScholarships.map((scholarship, index) => (
+            {scholarships.map((scholarship, index) => (
               <div key={scholarship.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
@@ -1172,7 +1845,7 @@ export function InstitutionDashboard() {
             <Label>Scholarship</Label>
             <select className="w-full mt-2 px-4 py-2 border border-slate-300 rounded-lg">
               <option>All Scholarships</option>
-              {mockScholarships.map((s) => (
+              {scholarships.map((s) => (
                 <option key={s.id}>{s.title}</option>
               ))}
             </select>
@@ -1227,11 +1900,10 @@ export function InstitutionDashboard() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as TabType)}
-                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'border-purple-600 text-purple-600 font-medium'
-                      : 'border-transparent text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id
+                    ? 'border-purple-600 text-purple-600 font-medium'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                    }`}
                 >
                   <Icon className="w-4 h-4" />
                   {tab.label}
@@ -1251,155 +1923,303 @@ export function InstitutionDashboard() {
 
       {/* Post Scholarship Form Modal */}
       {showPostScholarshipForm && (
-        <PostScholarshipForm 
+        <PostScholarshipForm
           onClose={() => setShowPostScholarshipForm(false)}
           institutionName="University of Colombo"
         />
       )}
 
       {/* Candidate Profile Modal */}
-      {selectedCandidateProfile && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-gradient-to-r from-purple-600 to-indigo-600 p-6 rounded-t-2xl">
-              <div className="flex items-center justify-between">
+      {selectedCandidateProfile && selectedCandidate && selectedScholarshipProfile && selectedEvidenceProfile && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
+          <div className="flex h-[calc(100vh-2rem)] w-full max-w-5xl min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="sticky top-0 z-20 rounded-t-2xl bg-gradient-to-r from-purple-600 to-indigo-600 p-6">
+              <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <div className="bg-white/20 backdrop-blur-sm p-4 rounded-xl">
-                    <GraduationCap className="w-8 h-8 text-white" />
+                  <div className="rounded-xl bg-white/20 p-4 backdrop-blur-sm">
+                    <GraduationCap className="h-8 w-8 text-white" />
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-white">
-                      {mockCandidates.find(c => c.id === selectedCandidateProfile)?.name}
+                      {selectedCandidate.name}
                     </h2>
-                    <p className="text-purple-100">Full Candidate Profile</p>
+                    <p className="text-purple-100">
+                      Candidate Review for {selectedCandidate.scholarship}
+                    </p>
                   </div>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setSelectedCandidateProfile(null)}
-                  className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                  className="border-white/30 bg-white/10 text-white hover:bg-white/20"
                 >
-                  <XCircle className="w-5 h-5" />
+                  <XCircle className="h-5 w-5" />
                 </Button>
               </div>
             </div>
 
-            <div className="p-8 space-y-6">
-              {(() => {
-                const candidate = mockCandidates.find(c => c.id === selectedCandidateProfile);
-                if (!candidate) return null;
-
-                return (
-                  <>
-                    {/* Match Score Banner */}
-                    <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-xl p-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-yellow-800 mb-1">Match Score</p>
-                          <div className="flex items-center gap-2">
-                            <Star className="w-6 h-6 text-yellow-500 fill-yellow-500" />
-                            <span className="text-4xl font-bold text-yellow-900">{candidate.matchScore}%</span>
-                          </div>
-                        </div>
-                        <div className={`px-4 py-2 rounded-full font-semibold ${
-                          candidate.status === 'selected' ? 'bg-green-100 text-green-700' :
-                          candidate.status === 'shortlisted' ? 'bg-blue-100 text-blue-700' :
-                          candidate.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                          'bg-slate-100 text-slate-700'
-                        }`}>
-                          {candidate.status.charAt(0).toUpperCase() + candidate.status.slice(1)}
-                        </div>
-                      </div>
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-8">
+              <div className="rounded-xl border border-yellow-200 bg-gradient-to-r from-yellow-50 to-orange-50 p-6">
+                <div className="grid gap-6 md:grid-cols-3">
+                  <div>
+                    <p className="mb-1 text-sm font-medium text-yellow-800">Match Score</p>
+                    <div className="flex items-center gap-2">
+                      <Star className="h-6 w-6 fill-yellow-500 text-yellow-500" />
+                      <span className="text-4xl font-bold text-yellow-900">
+                        {selectedCandidate.matchScore}%
+                      </span>
                     </div>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-sm font-medium text-yellow-800">Requirement Coverage</p>
+                    <p className="text-4xl font-bold text-yellow-900">{requirementCoverage}%</p>
+                  </div>
+                  <div className="md:text-right">
+                    <p className="mb-2 text-sm font-medium text-yellow-800">Current Status</p>
+                    <span className={`rounded-full px-4 py-2 text-sm font-semibold ${getStatusPillClasses(selectedCandidate.status)}`}>
+                      {selectedCandidate.status.charAt(0).toUpperCase() + selectedCandidate.status.slice(1)}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-4 rounded-lg border border-yellow-200 bg-white/70 p-3 text-sm text-yellow-900">
+                  {decisionRecommendation}
+                </p>
+              </div>
 
-                    {/* Personal Information */}
-                    <div>
-                      <h3 className="text-xl font-bold text-slate-900 mb-4">Personal Information</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-slate-50 p-4 rounded-lg">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Mail className="w-4 h-4 text-slate-600" />
-                            <p className="text-sm font-medium text-slate-600">Email</p>
-                          </div>
-                          <p className="text-base font-semibold text-slate-900">{candidate.email}</p>
-                        </div>
-                        <div className="bg-slate-50 p-4 rounded-lg">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Phone className="w-4 h-4 text-slate-600" />
-                            <p className="text-sm font-medium text-slate-600">Phone</p>
-                          </div>
-                          <p className="text-base font-semibold text-slate-900">{candidate.phone}</p>
-                        </div>
-                        <div className="bg-slate-50 p-4 rounded-lg">
-                          <div className="flex items-center gap-2 mb-2">
-                            <MapPin className="w-4 h-4 text-slate-600" />
-                            <p className="text-sm font-medium text-slate-600">Location</p>
-                          </div>
-                          <p className="text-base font-semibold text-slate-900">{candidate.location}</p>
-                        </div>
-                        <div className="bg-slate-50 p-4 rounded-lg">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Calendar className="w-4 h-4 text-slate-600" />
-                            <p className="text-sm font-medium text-slate-600">Applied Date</p>
-                          </div>
-                          <p className="text-base font-semibold text-slate-900">{candidate.appliedDate}</p>
-                        </div>
-                      </div>
-                    </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="rounded-lg bg-slate-50 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-slate-600" />
+                    <p className="text-sm font-medium text-slate-600">Email</p>
+                  </div>
+                  <p className="text-base font-semibold text-slate-900">{selectedCandidate.email}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-slate-600" />
+                    <p className="text-sm font-medium text-slate-600">Phone</p>
+                  </div>
+                  <p className="text-base font-semibold text-slate-900">{selectedCandidate.phone}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-slate-600" />
+                    <p className="text-sm font-medium text-slate-600">Location</p>
+                  </div>
+                  <p className="text-base font-semibold text-slate-900">{selectedCandidate.location}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-slate-600" />
+                    <p className="text-sm font-medium text-slate-600">Applied Date</p>
+                  </div>
+                  <p className="text-base font-semibold text-slate-900">{selectedCandidate.appliedDate}</p>
+                </div>
+              </div>
 
-                    {/* Academic Information */}
-                    <div>
-                      <h3 className="text-xl font-bold text-slate-900 mb-4">Academic Qualifications</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
-                          <p className="text-sm font-medium text-blue-700 mb-2">GPA</p>
-                          <p className="text-3xl font-bold text-blue-900">{candidate.gpa}</p>
-                        </div>
-                        <div className="bg-purple-50 border border-purple-200 p-4 rounded-lg">
-                          <p className="text-sm font-medium text-purple-700 mb-2">A/L Results</p>
-                          <p className="text-3xl font-bold text-purple-900">{candidate.alResults}</p>
-                        </div>
-                        <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-lg">
-                          <p className="text-sm font-medium text-indigo-700 mb-2">Level</p>
-                          <p className="text-3xl font-bold text-indigo-900">{candidate.level}</p>
-                        </div>
-                      </div>
-                    </div>
+              <div className="rounded-xl border border-purple-200 bg-purple-50 p-6">
+                <h3 className="mb-2 text-xl font-bold text-slate-900">Scholarship Fit Overview</h3>
+                <p className="mb-4 text-sm text-slate-700">{selectedScholarshipProfile.summary}</p>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <p className="text-sm font-medium text-blue-700">GPA</p>
+                    <p className="text-3xl font-bold text-blue-900">{selectedCandidate.gpa}</p>
+                  </div>
+                  <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
+                    <p className="text-sm font-medium text-purple-700">A/L Results</p>
+                    <p className="text-3xl font-bold text-purple-900">{selectedCandidate.alResults}</p>
+                  </div>
+                  <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+                    <p className="text-sm font-medium text-indigo-700">Study Level</p>
+                    <p className="text-3xl font-bold text-indigo-900">{selectedCandidate.level}</p>
+                  </div>
+                </div>
+              </div>
 
-                    {/* Scholarship Application */}
-                    <div>
-                      <h3 className="text-xl font-bold text-slate-900 mb-4">Scholarship Application</h3>
-                      <div className="bg-purple-50 border border-purple-200 p-6 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <Award className="w-6 h-6 text-purple-600" />
+              <div>
+                <h3 className="mb-4 text-xl font-bold text-slate-900">Requirement Match Breakdown</h3>
+                <div className="grid gap-3">
+                  {selectedRequirementChecks.map((check) => (
+                    <div
+                      key={check.requirement}
+                      className={`rounded-lg border p-4 ${check.matched
+                        ? 'border-green-200 bg-green-50'
+                        : 'border-red-200 bg-red-50'
+                        }`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          {check.matched ? (
+                            <CheckCircle className="mt-0.5 h-5 w-5 text-green-700" />
+                          ) : (
+                            <XCircle className="mt-0.5 h-5 w-5 text-red-700" />
+                          )}
                           <div>
-                            <p className="text-sm font-medium text-purple-700">Applied For</p>
-                            <p className="text-lg font-bold text-purple-900">{candidate.scholarship}</p>
+                            <p className="font-semibold text-slate-900">{check.requirement}</p>
+                            <p className="mt-1 text-sm text-slate-700">{check.evidence}</p>
                           </div>
                         </div>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${check.matched
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
+                            }`}
+                        >
+                          {check.matched ? 'Matched' : 'Needs Review'}
+                        </span>
                       </div>
                     </div>
+                  ))}
+                </div>
+              </div>
 
-                    {/* Actions */}
-                    <div className="flex gap-3 pt-4 border-t border-slate-200">
-                      <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white">
-                        <Download className="w-4 h-4 mr-2" />
-                        Download Full Application
-                      </Button>
-                      {candidate.status === 'selected' && (
-                        <Button 
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                          onClick={() => handleAnnouncement(candidate.id)}
-                        >
-                          <Send className="w-4 h-4 mr-2" />
-                          Send Selection Email
-                        </Button>
-                      )}
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-white p-5">
+                  <h4 className="mb-3 text-lg font-semibold text-slate-900">
+                    Qualifications & Evidence
+                  </h4>
+                  <div className="space-y-3 text-sm text-slate-700">
+                    <p><span className="font-semibold text-slate-900">Current Program:</span> {selectedEvidenceProfile.currentProgram}</p>
+                    <p><span className="font-semibold text-slate-900">Field of Study:</span> {selectedEvidenceProfile.fieldOfStudy}</p>
+                    <p><span className="font-semibold text-slate-900">English Test:</span> {selectedEvidenceProfile.englishTest} ({selectedEvidenceProfile.englishScore})</p>
+                  </div>
+                  <div className="mt-4">
+                    <p className="text-sm font-semibold text-slate-900">Experience Highlights</p>
+                    <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                      {selectedEvidenceProfile.experienceHighlights.map((item) => (
+                        <li key={item} className="flex items-start gap-2">
+                          <CheckCircle className="mt-0.5 h-4 w-4 text-blue-600" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="mt-4">
+                    <p className="text-sm font-semibold text-slate-900">Leadership Highlights</p>
+                    <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                      {selectedEvidenceProfile.leadershipHighlights.map((item) => (
+                        <li key={item} className="flex items-start gap-2">
+                          <CheckCircle className="mt-0.5 h-4 w-4 text-indigo-600" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-5">
+                  <h4 className="mb-3 text-lg font-semibold text-slate-900">
+                    Requirement Readiness
+                  </h4>
+                  <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold text-slate-900">Selection Criteria</p>
+                    <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                      {selectedScholarshipProfile.selectionCriteria.map((criterion) => (
+                        <li key={criterion} className="flex items-start gap-2">
+                          <Award className="mt-0.5 h-4 w-4 text-purple-600" />
+                          <span>{criterion}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold text-slate-900">Documents Submitted</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedEvidenceProfile.uploadedDocuments.map((document) => (
+                        <span key={document} className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                          {document}
+                        </span>
+                      ))}
                     </div>
-                  </>
-                );
-              })()}
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold text-slate-900">Missing Required Documents</p>
+                    {missingRequiredDocuments.length === 0 ? (
+                      <p className="mt-2 text-sm font-medium text-green-700">All required documents are present.</p>
+                    ) : (
+                      <ul className="mt-2 space-y-1 text-sm text-red-700">
+                        {missingRequiredDocuments.map((document) => (
+                          <li key={document} className="flex items-start gap-2">
+                            <XCircle className="mt-0.5 h-4 w-4" />
+                            <span>{document}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+                <h4 className="mb-3 text-lg font-semibold text-slate-900">Personal Statement Summary</h4>
+                <p className="text-sm leading-relaxed text-slate-700">
+                  {selectedEvidenceProfile.personalStatementSummary}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 lg:flex-row">
+                <Button
+                  className={`flex-1 text-red-700 hover:bg-blue-700 ${activeReviewAction[selectedCandidate.id] === 'shortlisted'
+                    ? 'bg-blue-800 ring-2 ring-blue-300'
+                    : 'bg-blue-600'
+                    }`}
+                  onClick={() => handleStatusChange(selectedCandidate.id, 'shortlisted')}
+                >
+                  Shortlist Candidate
+                </Button>
+                <Button
+                  className={`flex-1 text-blue-600 hover:bg-green-700 ${activeReviewAction[selectedCandidate.id] === 'selected'
+                    ? 'bg-green-800 ring-2 ring-green-300'
+                    : 'bg-green-600'
+                    }`}
+                  onClick={() => handleStatusChange(selectedCandidate.id, 'selected')}
+                >
+                  Select Candidate
+                </Button>
+                <Button
+                  variant="outline"
+                  className={`flex-1 border-red-300 text-red-700 hover:bg-red-50 ${activeReviewAction[selectedCandidate.id] === 'rejected'
+                    ? 'bg-red-100 ring-2 ring-red-200'
+                    : ''
+                    }`}
+                  onClick={() => handleStatusChange(selectedCandidate.id, 'rejected')}
+                >
+                  Reject Candidate
+                </Button>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row">
+                <Button
+                  className={`flex-1 text-yellow-500 hover:bg-purple-700 ${activeReviewAction[selectedCandidate.id] === 'download'
+                    ? 'bg-purple-800 ring-2 ring-purple-300'
+                    : 'bg-purple-600'
+                    }`}
+                  onClick={() =>
+                    handleDownloadApplication(
+                      selectedCandidate,
+                      selectedScholarshipProfile,
+                      selectedEvidenceProfile,
+                      selectedRequirementChecks,
+                    )
+                  }
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Full Application
+                </Button>
+                {selectedCandidate.status === 'selected' && (
+                  <Button
+                    className={`flex-1 text-blue-600 hover:bg-green-700 ${activeReviewAction[selectedCandidate.id] === 'announcement'
+                      ? 'bg-green-800 ring-2 ring-green-300'
+                      : 'bg-green-600'
+                      }`}
+                    onClick={() => handleAnnouncement(selectedCandidate.id)}
+                  >
+                    <Send className="mr-2 h-4 w-4" />
+                    Send Selection Email
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
