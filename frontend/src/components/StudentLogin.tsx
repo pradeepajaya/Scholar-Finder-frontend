@@ -39,8 +39,9 @@ const StudentLogin = ({ onLogin, onBack }: StudentLoginProps) => {
     setIsLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const response = await authApi.login({
-        email,
+        email: normalizedEmail,
         password,
         rememberMe,
       });
@@ -60,6 +61,10 @@ const StudentLogin = ({ onLogin, onBack }: StudentLoginProps) => {
       console.error("Login error:", err);
       if (err.response?.status === 401) {
         setError("Invalid email or password. Please try again.");
+      } else if (err.message === "Invalid email or password") {
+        setError(
+          "Invalid email or password. If you registered before login accounts were enabled, complete Student Registration once with this email and password.",
+        );
       } else if (err.response?.status === 403) {
         setError(
           "Access denied. Please make sure you are registered as a student.",

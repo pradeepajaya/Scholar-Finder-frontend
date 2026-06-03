@@ -3,8 +3,10 @@ package com.scholarfinder.auth.service;
 import com.scholarfinder.auth.dto.request.LoginRequest;
 import com.scholarfinder.auth.dto.request.RefreshTokenRequest;
 import com.scholarfinder.auth.dto.request.RegisterRequest;
+import com.scholarfinder.auth.dto.request.StudentAccountRecoveryRequest;
 import com.scholarfinder.auth.dto.response.AuthResponse;
 import com.scholarfinder.auth.entity.RefreshToken;
+import com.scholarfinder.auth.entity.Role;
 import com.scholarfinder.auth.entity.User;
 import com.scholarfinder.auth.exception.AuthException;
 import com.scholarfinder.auth.repository.RefreshTokenRepository;
@@ -67,6 +69,50 @@ public class AuthService {
     }
 
     @Transactional
+    public AuthResponse registerOrRecoverStudent(RegisterRequest request) {
+        if (!request.getPassword().equals(request.getConfirmPassword())) {
+            throw new AuthException("Passwords do not match");
+        }
+
+        if (request.getRole() != null && request.getRole() != Role.STUDENT) {
+            throw new AuthException("Only student accounts can use this registration flow");
+        }
+
+        User user = userRepository.findByEmail(request.getEmail())
+                .map(existingUser -> {
+                    if (existingUser.getRole() != Role.STUDENT) {
+                        throw new AuthException("This email is already registered for another account type");
+                    }
+                    if (!existingUser.getIsActive()) {
+                        throw new AuthException("Account is deactivated. Please contact support.");
+                    }
+                    existingUser.setPassword(passwordEncoder.encode(request.getPassword()));
+                    existingUser.setIsVerified(true);
+                    existingUser.setResetPasswordToken(null);
+                    existingUser.setResetPasswordExpires(null);
+                    existingUser.setLastLogin(LocalDateTime.now());
+                    return existingUser;
+                })
+                .orElseGet(() -> User.builder()
+                        .email(request.getEmail())
+                        .password(passwordEncoder.encode(request.getPassword()))
+                        .role(Role.STUDENT)
+                        .isActive(true)
+                        .isVerified(false)
+                        .verificationToken(UUID.randomUUID().toString())
+                        .lastLogin(LocalDateTime.now())
+                        .build());
+
+        user = userRepository.save(user);
+
+        String accessToken = jwtTokenProvider.generateToken(user.getEmail());
+        String refreshToken = createRefreshToken(user);
+
+        log.info("Student account ready for email: {}", user.getEmail());
+        return buildAuthResponse(user, accessToken, refreshToken);
+    }
+
+    @Transactional
     public AuthResponse login(LoginRequest request) {
         try {
             Authentication authentication = authenticationManager.authenticate(
@@ -99,6 +145,37 @@ public class AuthService {
         } catch (BadCredentialsException e) {
             throw new AuthException("Invalid email or password");
         }
+    }
+
+    @Transactional
+    public AuthResponse recoverStudentAccount(StudentAccountRecoveryRequest request) {
+        if (!request.getPassword().equals(request.getConfirmPassword())) {
+            throw new AuthException("Passwords do not match");
+        }
+
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new AuthException("Student account not found"));
+
+        if (user.getRole() != Role.STUDENT) {
+            throw new AuthException("This email is already registered for another account type");
+        }
+
+        if (!user.getIsActive()) {
+            throw new AuthException("Account is deactivated. Please contact support.");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setIsVerified(true);
+        user.setResetPasswordToken(null);
+        user.setResetPasswordExpires(null);
+        user.setLastLogin(LocalDateTime.now());
+        userRepository.save(user);
+
+        String accessToken = jwtTokenProvider.generateToken(user.getEmail());
+        String refreshToken = createRefreshToken(user);
+
+        log.info("Student account recovered for email: {}", user.getEmail());
+        return buildAuthResponse(user, accessToken, refreshToken);
     }
 
     @Transactional

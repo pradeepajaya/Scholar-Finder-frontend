@@ -20,11 +20,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
+        format_sql: false
         default_schema: scholarships
 
 # Eureka Client Configuration
@@ -38,14 +38,16 @@ eureka:
 # Matching Algorithm Configuration
 matching:
   weights:
-    education-level: 20
-    academic-performance: 15
-    english-proficiency: 15
-    age: 10
+    education-level: 15
+    academic-performance: 10
+    english-proficiency: 10
+    age: 5
     nationality: 10
-    financial-need: 10
-    field-of-study: 10
-    special-categories: 10
+    financial-need: 5
+    field-of-study: 25
+    preferred-country: 15
+    funding-type: 10
+    special-categories: 5
   thresholds:
     minimum-match-percentage: 50
     excellent-match: 90
@@ -54,5 +56,5 @@ matching:
 # Logging
 logging:
   level:
-    com.scholarfinder.scholarship: DEBUG
-    org.hibernate.SQL: DEBUG
+    com.scholarfinder.scholarship: INFO
+    org.hibernate.SQL: WARN

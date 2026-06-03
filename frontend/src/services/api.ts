@@ -15,8 +15,15 @@ export interface RegisterRequest {
   password: string;
   confirmPassword: string;
   role: 'STUDENT' | 'INSTITUTION' | 'ADMIN';
+  username?: string;
   fullName?: string;
   institutionName?: string;
+}
+
+export interface StudentAccountRecoveryRequest {
+  email: string;
+  password: string;
+  confirmPassword: string;
 }
 
 export interface UserDto {
@@ -377,6 +384,30 @@ class ApiClient {
     this.baseUrl = baseUrl;
   }
 
+  private async parseResponse<T>(response: Response): Promise<ApiResponse<T>> {
+    const text = await response.text();
+
+    if (!text) {
+      return {
+        success: response.ok,
+        message: response.statusText || "",
+        data: undefined as T,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    try {
+      return JSON.parse(text) as ApiResponse<T>;
+    } catch {
+      return {
+        success: response.ok,
+        message: text || response.statusText || "An error occurred",
+        data: undefined as T,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -408,7 +439,7 @@ class ApiClient {
           ...options,
           headers,
         });
-        return retryResponse.json();
+        return this.parseResponse<T>(retryResponse);
       } else {
         // Refresh failed, clear tokens and redirect to login
         tokenService.clearTokens();
@@ -417,7 +448,7 @@ class ApiClient {
       }
     }
 
-    const data = await response.json();
+    const data = await this.parseResponse<T>(response);
 
     if (!response.ok) {
       throw new Error(data.message || 'An error occurred');
@@ -439,7 +470,7 @@ class ApiClient {
 
       if (!response.ok) return false;
 
-      const data: ApiResponse<AuthResponse> = await response.json();
+      const data = await this.parseResponse<AuthResponse>(response);
       if (data.success && data.data) {
         tokenService.setToken(data.data.accessToken);
         tokenService.setRefreshToken(data.data.refreshToken);
@@ -473,6 +504,46 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(request),
     });
+
+    if (response.success && response.data) {
+      tokenService.setToken(response.data.accessToken);
+      tokenService.setRefreshToken(response.data.refreshToken);
+      tokenService.setUser(response.data.user);
+    }
+
+    return response;
+  }
+
+  async recoverStudentAccount(
+    request: StudentAccountRecoveryRequest,
+  ): Promise<ApiResponse<AuthResponse>> {
+    const response = await this.request<AuthResponse>(
+      '/auth/students/recover-account',
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+      },
+    );
+
+    if (response.success && response.data) {
+      tokenService.setToken(response.data.accessToken);
+      tokenService.setRefreshToken(response.data.refreshToken);
+      tokenService.setUser(response.data.user);
+    }
+
+    return response;
+  }
+
+  async registerOrRecoverStudent(
+    request: RegisterRequest,
+  ): Promise<ApiResponse<AuthResponse>> {
+    const response = await this.request<AuthResponse>(
+      '/auth/students/register-or-recover',
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+      },
+    );
 
     if (response.success && response.data) {
       tokenService.setToken(response.data.accessToken);
@@ -530,6 +601,10 @@ export const apiClient = new ApiClient(API_BASE_URL);
 export const authApi = {
   login: (request: LoginRequest) => apiClient.login(request),
   register: (request: RegisterRequest) => apiClient.register(request),
+  recoverStudentAccount: (request: StudentAccountRecoveryRequest) =>
+    apiClient.recoverStudentAccount(request),
+  registerOrRecoverStudent: (request: RegisterRequest) =>
+    apiClient.registerOrRecoverStudent(request),
   logout: () => apiClient.logout(),
   getCurrentUser: () => apiClient.getCurrentUser(),
   verifyEmail: (token: string) => apiClient.verifyEmail(token),

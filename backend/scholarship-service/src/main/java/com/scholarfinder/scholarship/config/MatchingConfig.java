@@ -25,11 +25,14 @@ public class MatchingConfig {
         private int nationality = 10;
         private int financialNeed = 10;
         private int fieldOfStudy = 10;
+        private int preferredCountry = 0;
+        private int fundingType = 0;
         private int specialCategories = 10;
 
         public int getTotal() {
             return educationLevel + academicPerformance + englishProficiency +
-                   age + nationality + financialNeed + fieldOfStudy + specialCategories;
+                   age + nationality + financialNeed + fieldOfStudy +
+                   preferredCountry + fundingType + specialCategories;
         }
     }
 

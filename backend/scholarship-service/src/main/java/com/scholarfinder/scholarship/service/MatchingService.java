@@ -23,8 +23,9 @@ import java.util.*;
  * 4. Age (10%) - Is student within age requirements?
  * 5. Nationality (10%) - Is student from eligible country?
  * 6. Financial Need (10%) - Does student meet financial criteria?
- * 7. Field of Study (10%) - Does preferred field match?
- * 8. Special Categories (10%) - Sports, leadership, first-generation, disability
+ * 7. Field of Study - Does preferred field match?
+ * 8. Preferences - Do preferred study country and funding type match?
+ * 9. Special Categories - Sports, leadership, first-generation, disability
  */
 @Service
 @RequiredArgsConstructor
@@ -67,13 +68,15 @@ public class MatchingService {
         CategoryScore nationalityScore = evaluateNationality(student, scholarship, matchedCriteria, unmatchedCriteria);
         CategoryScore financialScore = evaluateFinancialNeed(student, scholarship, matchedCriteria, unmatchedCriteria);
         CategoryScore fieldScore = evaluateFieldOfStudy(student, scholarship, matchedCriteria, unmatchedCriteria);
+        CategoryScore preferenceScore = evaluatePreferences(student, scholarship, matchedCriteria, unmatchedCriteria);
         CategoryScore specialScore = evaluateSpecialCategories(student, scholarship, matchedCriteria, unmatchedCriteria);
         
         // Calculate total score
         int totalEarned = educationScore.getEarned() + academicScore.getEarned() + 
                           englishScore.getEarned() + ageScore.getEarned() +
                           nationalityScore.getEarned() + financialScore.getEarned() +
-                          fieldScore.getEarned() + specialScore.getEarned();
+                          fieldScore.getEarned() + preferenceScore.getEarned() +
+                          specialScore.getEarned();
         
         int totalMax = config.getWeights().getTotal();
         
@@ -97,6 +100,7 @@ public class MatchingService {
             .nationality(nationalityScore)
             .financialNeed(financialScore)
             .fieldOfStudy(fieldScore)
+            .preferences(preferenceScore)
             .specialCategories(specialScore)
             .build();
 
@@ -500,7 +504,7 @@ public class MatchingService {
     }
 
     /**
-     * Evaluate field of study match (10 points).
+     * Evaluate field of study match.
      */
     private CategoryScore evaluateFieldOfStudy(StudentProfile student, Scholarship scholarship,
                                                 List<MatchedCriterion> matched, List<UnmatchedCriterion> unmatched) {
@@ -513,12 +517,9 @@ public class MatchingService {
 
         if (eligibleFields != null && eligibleFields.length > 0) {
             if (studentFields != null && studentFields.length > 0) {
-                // Check for any matching field
                 boolean hasMatch = Arrays.stream(studentFields)
                     .anyMatch(sf -> Arrays.stream(eligibleFields)
-                        .anyMatch(ef -> ef.equalsIgnoreCase(sf) || 
-                                       ef.toLowerCase().contains(sf.toLowerCase()) ||
-                                       sf.toLowerCase().contains(ef.toLowerCase())));
+                        .anyMatch(ef -> valueMatches(sf, ef)));
                 
                 if (hasMatch) {
                     earnedPoints = maxPoints;
@@ -548,6 +549,94 @@ public class MatchingService {
         } else {
             // No field restriction
             earnedPoints = maxPoints;
+        }
+
+        return buildCategoryScore(category, earnedPoints, maxPoints);
+    }
+
+    /**
+     * Evaluate student preference matches for study country and funding type.
+     */
+    private CategoryScore evaluatePreferences(StudentProfile student, Scholarship scholarship,
+                                               List<MatchedCriterion> matched, List<UnmatchedCriterion> unmatched) {
+        int countryPoints = config.getWeights().getPreferredCountry();
+        int fundingPoints = config.getWeights().getFundingType();
+        int maxPoints = countryPoints + fundingPoints;
+        int earnedPoints = 0;
+        String category = "Preferences";
+
+        String[] preferredCountries = student.getPreferredCountries();
+        String[] scholarshipCountries = scholarship.getEligibleCountries();
+
+        if (countryPoints > 0) {
+            if (hasValues(preferredCountries)) {
+                if (hasValues(scholarshipCountries)) {
+                    boolean hasCountryMatch = Arrays.stream(preferredCountries)
+                        .anyMatch(preferred -> Arrays.stream(scholarshipCountries)
+                            .anyMatch(country -> valueMatches(preferred, country)));
+
+                    if (hasCountryMatch) {
+                        earnedPoints += countryPoints;
+                        matched.add(MatchedCriterion.builder()
+                            .category(category)
+                            .criterion("Preferred study country matches")
+                            .studentValue(formatArray(preferredCountries))
+                            .requiredValue(formatArray(scholarshipCountries))
+                            .pointsEarned(countryPoints)
+                            .maxPoints(countryPoints)
+                            .build());
+                    } else {
+                        unmatched.add(UnmatchedCriterion.builder()
+                            .category(category)
+                            .criterion("Preferred study country does not match")
+                            .studentValue(formatArray(preferredCountries))
+                            .requiredValue(formatArray(scholarshipCountries))
+                            .pointsMissed(countryPoints)
+                            .mandatory(false)
+                            .suggestion("This scholarship is listed for " + formatArray(scholarshipCountries))
+                            .build());
+                    }
+                } else {
+                    earnedPoints += countryPoints / 2;
+                }
+            } else {
+                earnedPoints += countryPoints;
+            }
+        }
+
+        if (fundingPoints > 0) {
+            String preferredFunding = normalizeScholarshipType(student.getScholarshipType());
+            String scholarshipFunding = normalizeScholarshipType(scholarship.getScholarshipType());
+
+            if (preferredFunding != null) {
+                if (scholarshipFunding != null) {
+                    if (preferredFunding.equals(scholarshipFunding)) {
+                        earnedPoints += fundingPoints;
+                        matched.add(MatchedCriterion.builder()
+                            .category(category)
+                            .criterion("Preferred funding type matches")
+                            .studentValue(formatScholarshipType(preferredFunding))
+                            .requiredValue(formatScholarshipType(scholarshipFunding))
+                            .pointsEarned(fundingPoints)
+                            .maxPoints(fundingPoints)
+                            .build());
+                    } else {
+                        unmatched.add(UnmatchedCriterion.builder()
+                            .category(category)
+                            .criterion("Preferred funding type does not match")
+                            .studentValue(formatScholarshipType(preferredFunding))
+                            .requiredValue(formatScholarshipType(scholarshipFunding))
+                            .pointsMissed(fundingPoints)
+                            .mandatory(false)
+                            .suggestion("Your profile prioritizes " + formatScholarshipType(preferredFunding) + " funding")
+                            .build());
+                    }
+                } else {
+                    earnedPoints += fundingPoints / 2;
+                }
+            } else {
+                earnedPoints += fundingPoints;
+            }
         }
 
         return buildCategoryScore(category, earnedPoints, maxPoints);
@@ -779,6 +868,104 @@ public class MatchingService {
         }
         
         return score;
+    }
+
+    private boolean hasValues(String[] values) {
+        return values != null && Arrays.stream(values).anyMatch(this::hasText);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private boolean valueMatches(String preferredValue, String scholarshipValue) {
+        String preferred = normalizePreferenceValue(preferredValue);
+        String scholarship = normalizePreferenceValue(scholarshipValue);
+
+        if (preferred == null || scholarship == null) {
+            return false;
+        }
+        if (isWildcardPreference(preferred) || isWildcardPreference(scholarship)) {
+            return true;
+        }
+
+        return preferred.equals(scholarship)
+            || preferred.contains(scholarship)
+            || scholarship.contains(preferred);
+    }
+
+    private String normalizePreferenceValue(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+
+        return value.trim()
+            .toLowerCase(Locale.ROOT)
+            .replace("&", " and ")
+            .replace("_", " ")
+            .replace("-", " ")
+            .replaceAll("[^a-z0-9 ]", " ")
+            .replaceAll("\\s+", " ")
+            .trim();
+    }
+
+    private boolean isWildcardPreference(String value) {
+        return value.equals("all")
+            || value.equals("any")
+            || value.equals("all fields")
+            || value.equals("any field")
+            || value.equals("all countries")
+            || value.equals("any country")
+            || value.equals("multiple")
+            || value.equals("multiple countries")
+            || value.equals("various programs");
+    }
+
+    private String normalizeScholarshipType(String type) {
+        String normalized = normalizePreferenceValue(type);
+        if (normalized == null) {
+            return null;
+        }
+
+        if (normalized.contains("full")) {
+            return "FULL";
+        }
+        if (normalized.contains("partial")) {
+            return "PARTIAL";
+        }
+        if (normalized.contains("tuition")) {
+            return "TUITION";
+        }
+        if (normalized.contains("living")) {
+            return "LIVING_EXPENSES";
+        }
+
+        return normalized.toUpperCase(Locale.ROOT).replace(" ", "_");
+    }
+
+    private String formatScholarshipType(String type) {
+        if (type == null) {
+            return "Not specified";
+        }
+
+        return switch (type) {
+            case "FULL" -> "Fully Funded";
+            case "PARTIAL" -> "Partial Funding";
+            case "TUITION" -> "Tuition Only";
+            case "LIVING_EXPENSES" -> "Living Allowance";
+            default -> type.replace("_", " ");
+        };
+    }
+
+    private String formatArray(String[] values) {
+        if (!hasValues(values)) {
+            return "Not specified";
+        }
+
+        return Arrays.stream(values)
+            .filter(this::hasText)
+            .map(String::trim)
+            .collect(java.util.stream.Collectors.joining(", "));
     }
 
     /**

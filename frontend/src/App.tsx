@@ -65,6 +65,7 @@ export default function App() {
 
   const handleStudentRegistration = (data: any) => {
     setIsRegistered(true);
+    setIsLoggedIn(true);
     setUserType("student");
     setCurrentPage("profile");
   };

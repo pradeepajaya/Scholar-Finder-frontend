@@ -35,6 +35,7 @@ import {
   TooltipTrigger,
 } from "./ui/tooltip";
 import {
+  authApi,
   scholarshipApi,
   STUDENT_ID_KEY,
   StudentProfileRequest,
@@ -53,6 +54,8 @@ interface FormData {
   province: string;
   city: string;
   email: string;
+  password: string;
+  confirmPassword: string;
   mobile: string;
   preferredLanguage: string;
   highestEducation: string;
@@ -184,6 +187,8 @@ export function StudentRegistration({
     province: "",
     city: "",
     email: getAuthenticatedStudentUser()?.email || "",
+    password: "",
+    confirmPassword: "",
     mobile: "",
     preferredLanguage: "English",
     highestEducation: "",
@@ -267,6 +272,8 @@ export function StudentRegistration({
     province: toFormText(profile.province),
     city: toFormText(profile.city),
     email: toFormText(profile.email) || fallbackEmail || "",
+    password: "",
+    confirmPassword: "",
     mobile: toFormText(profile.mobile),
     preferredLanguage: toFormText(profile.preferredLanguage) || "English",
     highestEducation: toFormText(profile.highestEducation),
@@ -415,15 +422,14 @@ export function StudentRegistration({
   };
 
   const buildProfileRequest = (data: FormData): StudentProfileRequest => {
-    const storedUserId = localStorage.getItem(STUDENT_ID_KEY);
     const currentUser = getAuthenticatedStudentUser();
-    const studentUserId = currentUser?.id;
+    const studentUserId = currentUser?.id ?? getStoredStudentUserId();
     const englishTest = normalizeEnglishTest(data.englishTest);
 
     return {
-      userId: studentUserId ?? (storedUserId ? Number(storedUserId) : undefined),
+      userId: studentUserId ?? undefined,
       fullName: data.fullName.trim(),
-      email: toOptionalText(data.email),
+      email: toOptionalText(data.email)?.toLowerCase(),
       dateOfBirth: toOptionalText(data.dateOfBirth),
       gender: toOptionalText(data.gender),
       nationality: toOptionalText(data.nationality),
@@ -511,6 +517,7 @@ export function StudentRegistration({
   };
 
   const progress = (currentStep / steps.length) * 100;
+  const isCreatingAccount = !getAuthenticatedStudentUser()?.id;
 
   const handleNext = async () => {
     if (currentStep < steps.length) {
@@ -522,6 +529,33 @@ export function StudentRegistration({
     setSubmitError("");
     setIsSubmitting(true);
     try {
+      if (isCreatingAccount) {
+        const normalizedEmail = formData.email.trim().toLowerCase();
+        const authResponse = await authApi.registerOrRecoverStudent({
+          email: normalizedEmail,
+          password: formData.password,
+          confirmPassword: formData.confirmPassword,
+          role: "STUDENT",
+          username: buildUsernameFromEmail(normalizedEmail),
+          fullName: formData.fullName.trim(),
+        });
+
+        if (authResponse.success && authResponse.data?.user) {
+          if (authResponse.data.user.role !== "STUDENT") {
+            throw new Error(
+              "This email is already registered for another account type.",
+            );
+          }
+
+          localStorage.setItem(
+            STUDENT_ID_KEY,
+            String(authResponse.data.user.id),
+          );
+        } else {
+          throw new Error(authResponse.message || "Failed to create account");
+        }
+      }
+
       const payload = buildProfileRequest(formData);
       const response = await scholarshipApi.upsertStudentProfile(payload);
 
@@ -546,7 +580,8 @@ export function StudentRegistration({
   };
 
   const saveProgress = () => {
-    localStorage.setItem("scholarFinderProgress", JSON.stringify(formData));
+    const { password, confirmPassword, ...progressDraft } = formData;
+    localStorage.setItem("scholarFinderProgress", JSON.stringify(progressDraft));
     setSavedProgress(true);
     setTimeout(() => setSavedProgress(false), 3000);
   };
@@ -560,6 +595,9 @@ export function StudentRegistration({
           formData.nicPassport &&
           formData.district &&
           formData.email &&
+          (!isCreatingAccount ||
+            (formData.password.length >= 8 &&
+              formData.confirmPassword === formData.password)) &&
           formData.mobile
         );
       case 2:
@@ -925,9 +963,63 @@ export function StudentRegistration({
                       className="mt-1.5"
                     />
                     <p className="text-xs text-slate-500 mt-1">
-                      We'll send scholarship matches to this email
+                      This is also the email you will use to log in.
                     </p>
                   </div>
+
+                  {isCreatingAccount && (
+                    <>
+                      <div>
+                        <Label
+                          htmlFor="password"
+                          className="flex items-center gap-2"
+                        >
+                          Password <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="password"
+                          type="password"
+                          value={formData.password}
+                          onChange={(e) =>
+                            updateFormData("password", e.target.value)
+                          }
+                          placeholder="Create a password"
+                          className="mt-1.5"
+                          autoComplete="new-password"
+                        />
+                        <p className="text-xs text-slate-500 mt-1">
+                          Use at least 8 characters.
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label
+                          htmlFor="confirmPassword"
+                          className="flex items-center gap-2"
+                        >
+                          Confirm Password{" "}
+                          <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="confirmPassword"
+                          type="password"
+                          value={formData.confirmPassword}
+                          onChange={(e) =>
+                            updateFormData("confirmPassword", e.target.value)
+                          }
+                          placeholder="Re-enter password"
+                          className="mt-1.5"
+                          autoComplete="new-password"
+                        />
+                        {formData.confirmPassword &&
+                          formData.confirmPassword !== formData.password && (
+                            <p className="text-xs text-red-600 mt-1">
+                              Passwords do not match.
+                            </p>
+                          )}
+                      </div>
+                    </>
+                  )}
 
                   <div>
                     <Label htmlFor="mobile" className="flex items-center gap-2">
@@ -2131,4 +2223,27 @@ function getAuthenticatedStudentUser() {
     : null;
 
   return currentUser?.role === "STUDENT" ? currentUser : null;
+}
+
+function getStoredStudentUserId() {
+  const storedUserId = Number(localStorage.getItem(STUDENT_ID_KEY));
+  if (Number.isFinite(storedUserId) && storedUserId > 0) {
+    return storedUserId;
+  }
+
+  const cachedUserId = studentProfileCache.getProfile()?.userId;
+  return typeof cachedUserId === "number" && cachedUserId > 0
+    ? cachedUserId
+    : null;
+}
+
+function buildUsernameFromEmail(email: string) {
+  const localPart = email.split("@")[0] || "student";
+  const safeBase =
+    localPart
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, "-")
+      .replace(/^[._-]+|[._-]+$/g, "") || "student";
+
+  return `${safeBase}-${Date.now().toString(36)}`;
 }

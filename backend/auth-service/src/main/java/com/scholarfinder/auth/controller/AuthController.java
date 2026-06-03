@@ -3,6 +3,7 @@ package com.scholarfinder.auth.controller;
 import com.scholarfinder.auth.dto.request.LoginRequest;
 import com.scholarfinder.auth.dto.request.RefreshTokenRequest;
 import com.scholarfinder.auth.dto.request.RegisterRequest;
+import com.scholarfinder.auth.dto.request.StudentAccountRecoveryRequest;
 import com.scholarfinder.auth.dto.response.ApiResponse;
 import com.scholarfinder.auth.dto.response.AuthResponse;
 import com.scholarfinder.auth.entity.User;
@@ -44,6 +45,22 @@ public class AuthController {
         log.info("Login request for email: {}", request.getEmail());
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(ApiResponse.success("Login successful", response));
+    }
+
+    @PostMapping("/students/recover-account")
+    public ResponseEntity<ApiResponse<AuthResponse>> recoverStudentAccount(
+            @Valid @RequestBody StudentAccountRecoveryRequest request) {
+        log.info("Student account recovery request for email: {}", request.getEmail());
+        AuthResponse response = authService.recoverStudentAccount(request);
+        return ResponseEntity.ok(ApiResponse.success("Student account recovered successfully", response));
+    }
+
+    @PostMapping("/students/register-or-recover")
+    public ResponseEntity<ApiResponse<AuthResponse>> registerOrRecoverStudent(
+            @Valid @RequestBody RegisterRequest request) {
+        log.info("Student register-or-recover request for email: {}", request.getEmail());
+        AuthResponse response = authService.registerOrRecoverStudent(request);
+        return ResponseEntity.ok(ApiResponse.success("Student account ready", response));
     }
 
     /**

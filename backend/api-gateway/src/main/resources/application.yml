@@ -106,8 +106,8 @@ management:
 # Logging
 logging:
   level:
-    org.springframework.cloud.gateway: DEBUG
-    com.scholarfinder: DEBUG
+    org.springframework.cloud.gateway: WARN
+    com.scholarfinder: INFO
 
 ---
 # Docker Profile

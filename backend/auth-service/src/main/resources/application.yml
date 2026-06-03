@@ -20,11 +20,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate  # Use 'create' for first run, then 'validate'
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
+        format_sql: false
         default_schema: auth
   
   # Redis Configuration
@@ -61,8 +61,8 @@ management:
 # Logging
 logging:
   level:
-    com.scholarfinder: DEBUG
-    org.springframework.security: DEBUG
+    com.scholarfinder: INFO
+    org.springframework.security: WARN
 
 ---
 # Docker Profile
