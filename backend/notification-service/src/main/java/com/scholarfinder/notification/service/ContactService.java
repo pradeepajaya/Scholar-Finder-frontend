@@ -6,6 +6,7 @@ import com.scholarfinder.notification.repository.ContactMessageRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.NonNull;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -14,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -87,7 +87,8 @@ public class ContactService {
      */
     @Transactional(readOnly = true)
     public ContactMessageDto getMessageById(Long id) {
-        ContactMessage message = contactRepository.findById(id)
+        Long messageId = requireId(id);
+        ContactMessage message = contactRepository.findById(messageId)
             .orElseThrow(() -> new EntityNotFoundException("Contact message not found with id: " + id));
         return mapToDto(message);
     }
@@ -126,7 +127,8 @@ public class ContactService {
      * Update message status.
      */
     public ContactMessageDto updateStatus(Long id, String status) {
-        ContactMessage message = contactRepository.findById(id)
+        Long messageId = requireId(id);
+        ContactMessage message = contactRepository.findById(messageId)
             .orElseThrow(() -> new EntityNotFoundException("Contact message not found with id: " + id));
         
         message.setStatus(status);
@@ -138,7 +140,8 @@ public class ContactService {
      * Update message priority.
      */
     public ContactMessageDto updatePriority(Long id, String priority) {
-        ContactMessage message = contactRepository.findById(id)
+        Long messageId = requireId(id);
+        ContactMessage message = contactRepository.findById(messageId)
             .orElseThrow(() -> new EntityNotFoundException("Contact message not found with id: " + id));
         
         message.setPriority(priority);
@@ -150,7 +153,8 @@ public class ContactService {
      * Assign message to admin.
      */
     public ContactMessageDto assignMessage(Long id, Long adminId) {
-        ContactMessage message = contactRepository.findById(id)
+        Long messageId = requireId(id);
+        ContactMessage message = contactRepository.findById(messageId)
             .orElseThrow(() -> new EntityNotFoundException("Contact message not found with id: " + id));
         
         message.setAssignedTo(adminId);
@@ -166,7 +170,8 @@ public class ContactService {
      * Respond to a contact message.
      */
     public ContactMessageDto respondToMessage(Long id, ContactResponseRequest request, Long adminId) {
-        ContactMessage message = contactRepository.findById(id)
+        Long messageId = requireId(id);
+        ContactMessage message = contactRepository.findById(messageId)
             .orElseThrow(() -> new EntityNotFoundException("Contact message not found with id: " + id));
         
         message.setResponse(request.getResponse());
@@ -197,7 +202,8 @@ public class ContactService {
      * Add admin notes.
      */
     public ContactMessageDto addAdminNotes(Long id, String notes) {
-        ContactMessage message = contactRepository.findById(id)
+        Long messageId = requireId(id);
+        ContactMessage message = contactRepository.findById(messageId)
             .orElseThrow(() -> new EntityNotFoundException("Contact message not found with id: " + id));
         
         String existingNotes = message.getAdminNotes() != null ? message.getAdminNotes() + "\n\n" : "";
@@ -211,10 +217,11 @@ public class ContactService {
      * Delete a message.
      */
     public void deleteMessage(Long id) {
-        if (!contactRepository.existsById(id)) {
+        Long messageId = requireId(id);
+        if (!contactRepository.existsById(messageId)) {
             throw new EntityNotFoundException("Contact message not found with id: " + id);
         }
-        contactRepository.deleteById(id);
+        contactRepository.deleteById(messageId);
     }
 
     /**
@@ -322,5 +329,13 @@ public class ContactService {
             page.isFirst(),
             page.isLast()
         );
+    }
+
+    @NonNull
+    private Long requireId(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("Contact message id is required");
+        }
+        return id;
     }
 }

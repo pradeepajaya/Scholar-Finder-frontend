@@ -1,8 +1,10 @@
 package com.scholarfinder.content.service;
 
+import com.scholarfinder.content.dto.CategoryDto;
 import com.scholarfinder.content.dto.NewsDto;
 import com.scholarfinder.content.dto.NewsRequest;
 import com.scholarfinder.content.dto.PagedResponse;
+import com.scholarfinder.content.dto.TagDto;
 import com.scholarfinder.content.entity.Category;
 import com.scholarfinder.content.entity.News;
 import com.scholarfinder.content.entity.Tag;
@@ -10,6 +12,7 @@ import com.scholarfinder.content.repository.CategoryRepository;
 import com.scholarfinder.content.repository.NewsRepository;
 import com.scholarfinder.content.repository.TagRepository;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.lang.NonNull;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -49,7 +53,7 @@ public class NewsService {
         news.setStatus("DRAFT");
         news.setViewsCount(0);
         
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -57,11 +61,12 @@ public class NewsService {
      * Update an existing news article.
      */
     public NewsDto updateNews(Long id, NewsRequest request) {
-        News news = newsRepository.findById(id)
+        Long newsId = requireId(id, "News");
+        News news = newsRepository.findById(newsId)
             .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
         
         mapRequestToEntity(request, news);
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -70,7 +75,8 @@ public class NewsService {
      */
     @Transactional(readOnly = true)
     public NewsDto getNewsById(Long id) {
-        News news = newsRepository.findById(id)
+        Long newsId = requireId(id, "News");
+        News news = newsRepository.findById(newsId)
             .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
         return mapToDto(news);
     }
@@ -122,8 +128,9 @@ public class NewsService {
      */
     @Transactional(readOnly = true)
     public PagedResponse<NewsDto> getNewsByCategory(Long categoryId, int page, int size) {
+        Long safeCategoryId = requireId(categoryId, "Category");
         Pageable pageable = PageRequest.of(page, size);
-        Page<News> newsPage = newsRepository.findByCategory(categoryId, pageable);
+        Page<News> newsPage = newsRepository.findByCategory(safeCategoryId, pageable);
         return createPagedResponse(newsPage);
     }
 
@@ -132,8 +139,9 @@ public class NewsService {
      */
     @Transactional(readOnly = true)
     public PagedResponse<NewsDto> getNewsByTag(Long tagId, int page, int size) {
+        Long safeTagId = requireId(tagId, "Tag");
         Pageable pageable = PageRequest.of(page, size);
-        Page<News> newsPage = newsRepository.findByTag(tagId, pageable);
+        Page<News> newsPage = newsRepository.findByTag(safeTagId, pageable);
         return createPagedResponse(newsPage);
     }
 
@@ -162,13 +170,14 @@ public class NewsService {
      * Publish a news article.
      */
     public NewsDto publishNews(Long id) {
-        News news = newsRepository.findById(id)
+        Long newsId = requireId(id, "News");
+        News news = newsRepository.findById(newsId)
             .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
         
         news.setStatus("PUBLISHED");
         news.setPublishedAt(LocalDateTime.now());
         
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -176,12 +185,13 @@ public class NewsService {
      * Archive a news article.
      */
     public NewsDto archiveNews(Long id) {
-        News news = newsRepository.findById(id)
+        Long newsId = requireId(id, "News");
+        News news = newsRepository.findById(newsId)
             .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
         
         news.setStatus("ARCHIVED");
         
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -189,21 +199,23 @@ public class NewsService {
      * Delete a news article.
      */
     public void deleteNews(Long id) {
-        if (!newsRepository.existsById(id)) {
+        Long newsId = requireId(id, "News");
+        if (!newsRepository.existsById(newsId)) {
             throw new EntityNotFoundException("News not found with id: " + id);
         }
-        newsRepository.deleteById(id);
+        newsRepository.deleteById(newsId);
     }
 
     /**
      * Set news as featured.
      */
     public NewsDto setFeatured(Long id, boolean featured) {
-        News news = newsRepository.findById(id)
+        Long newsId = requireId(id, "News");
+        News news = newsRepository.findById(newsId)
             .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
         
         news.setIsFeatured(featured);
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -211,11 +223,12 @@ public class NewsService {
      * Set news as breaking.
      */
     public NewsDto setBreaking(Long id, boolean breaking) {
-        News news = newsRepository.findById(id)
+        Long newsId = requireId(id, "News");
+        News news = newsRepository.findById(newsId)
             .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
         
         news.setIsBreaking(breaking);
-        News saved = newsRepository.save(news);
+        News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
 
@@ -226,17 +239,18 @@ public class NewsService {
         news.setSummary(request.getSummary());
         news.setContent(request.getContent());
         news.setFeaturedImage(request.getFeaturedImage());
-        news.setSource(request.getSource());
+        news.setSourceName(request.getSourceName());
         news.setSourceUrl(request.getSourceUrl());
-        news.setIsFeatured(request.getIsFeatured() != null ? request.getIsFeatured() : false);
-        news.setIsBreaking(request.getIsBreaking() != null ? request.getIsBreaking() : false);
+        news.setIsFeatured(Boolean.TRUE.equals(request.getIsFeatured()));
+        news.setIsBreaking(Boolean.TRUE.equals(request.getIsBreaking()));
         news.setMetaTitle(request.getMetaTitle());
         news.setMetaDescription(request.getMetaDescription());
 
         // Set category
-        if (request.getCategoryId() != null) {
-            Category category = categoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new EntityNotFoundException("Category not found with id: " + request.getCategoryId()));
+        Long categoryId = request.getCategoryId();
+        if (categoryId != null) {
+            Category category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new EntityNotFoundException("Category not found with id: " + categoryId));
             news.setCategory(category);
         }
 
@@ -256,7 +270,7 @@ public class NewsService {
         dto.setContent(news.getContent());
         dto.setFeaturedImage(news.getFeaturedImage());
         dto.setAuthorId(news.getAuthorId());
-        dto.setSource(news.getSource());
+        dto.setSourceName(news.getSourceName());
         dto.setSourceUrl(news.getSourceUrl());
         dto.setStatus(news.getStatus());
         dto.setIsFeatured(news.getIsFeatured());
@@ -269,13 +283,24 @@ public class NewsService {
         dto.setMetaDescription(news.getMetaDescription());
 
         if (news.getCategory() != null) {
-            dto.setCategoryId(news.getCategory().getId());
-            dto.setCategoryName(news.getCategory().getName());
+            CategoryDto categoryDto = new CategoryDto();
+            categoryDto.setId(news.getCategory().getId());
+            categoryDto.setName(news.getCategory().getName());
+            categoryDto.setSlug(news.getCategory().getSlug());
+            dto.setCategory(categoryDto);
         }
 
         if (news.getTags() != null) {
-            dto.setTagIds(news.getTags().stream().map(Tag::getId).collect(Collectors.toList()));
-            dto.setTagNames(news.getTags().stream().map(Tag::getName).collect(Collectors.toList()));
+            List<TagDto> tagDtos = news.getTags().stream()
+                .map(tag -> {
+                    TagDto tagDto = new TagDto();
+                    tagDto.setId(tag.getId());
+                    tagDto.setName(tag.getName());
+                    tagDto.setSlug(tag.getSlug());
+                    return tagDto;
+                })
+                .collect(Collectors.toList());
+            dto.setTags(tagDtos);
         }
 
         return dto;
@@ -293,7 +318,9 @@ public class NewsService {
             page.getTotalElements(),
             page.getTotalPages(),
             page.isFirst(),
-            page.isLast()
+            page.isLast(),
+            page.hasNext(),
+            page.hasPrevious()
         );
     }
 
@@ -312,5 +339,18 @@ public class NewsService {
         }
 
         return slug;
+    }
+
+    @NonNull
+    private Long requireId(Long id, String label) {
+        if (id == null) {
+            throw new IllegalArgumentException(label + " id is required");
+        }
+        return id;
+    }
+
+    @NonNull
+    private News requireNews(News news) {
+        return Objects.requireNonNull(news, "News is required");
     }
 }

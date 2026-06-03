@@ -14,7 +14,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/blogs")
-@CrossOrigin(origins = "*")
 public class BlogPostController {
 
     private final BlogPostService blogPostService;

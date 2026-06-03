@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -34,6 +34,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./ui/tooltip";
+import {
+  scholarshipApi,
+  STUDENT_ID_KEY,
+  StudentProfileRequest,
+  studentProfileCache,
+  type StudentProfileResponse,
+  tokenService,
+} from "@/services/api";
 
 interface FormData {
   fullName: string;
@@ -130,12 +138,42 @@ const steps = [
   },
 ];
 
+const sriLankanDistricts = [
+  "Ampara",
+  "Anuradhapura",
+  "Badulla",
+  "Batticaloa",
+  "Colombo",
+  "Galle",
+  "Gampaha",
+  "Hambantota",
+  "Jaffna",
+  "Kalutara",
+  "Kandy",
+  "Kegalle",
+  "Kilinochchi",
+  "Kurunegala",
+  "Mannar",
+  "Matale",
+  "Matara",
+  "Monaragala",
+  "Mullaitivu",
+  "Nuwara Eliya",
+  "Polonnaruwa",
+  "Puttalam",
+  "Ratnapura",
+  "Trincomalee",
+  "Vavuniya",
+];
+
 export function StudentRegistration({
   onComplete,
 }: {
   onComplete: (data: FormData) => void;
 }) {
   const [currentStep, setCurrentStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [formData, setFormData] = useState<FormData>({
     fullName: "",
     dateOfBirth: "",
@@ -145,7 +183,7 @@ export function StudentRegistration({
     district: "",
     province: "",
     city: "",
-    email: "",
+    email: getAuthenticatedStudentUser()?.email || "",
     mobile: "",
     preferredLanguage: "English",
     highestEducation: "",
@@ -194,8 +232,267 @@ export function StudentRegistration({
 
   const [savedProgress, setSavedProgress] = useState(false);
 
+  const toFormText = (value?: string | number | null) =>
+    value === undefined || value === null ? "" : String(value);
+
+  const denormalizeEducationLevel = (value?: string | null) => {
+    if (!value) return "";
+    const normalized = value.toUpperCase();
+    if (normalized === "UNDERGRADUATE") return "Bachelor's";
+    if (normalized === "POSTGRADUATE") return "Master's";
+    if (normalized === "PHD") return "PhD";
+    return value;
+  };
+
+  const denormalizeScholarshipType = (value?: string | null) => {
+    const labels: Record<string, string> = {
+      FULL: "Fully Funded",
+      PARTIAL: "Partial",
+      TUITION: "Tuition Only",
+      LIVING_EXPENSES: "Living Allowance",
+    };
+    return value ? labels[value] || value : "";
+  };
+
+  const mapProfileResponseToFormData = (
+    profile: StudentProfileResponse,
+    fallbackEmail?: string,
+  ): FormData => ({
+    fullName: toFormText(profile.fullName),
+    dateOfBirth: toFormText(profile.dateOfBirth),
+    gender: toFormText(profile.gender),
+    nationality: toFormText(profile.nationality) || "Sri Lankan",
+    nicPassport: toFormText(profile.nicPassport),
+    district: toFormText(profile.district),
+    province: toFormText(profile.province),
+    city: toFormText(profile.city),
+    email: toFormText(profile.email) || fallbackEmail || "",
+    mobile: toFormText(profile.mobile),
+    preferredLanguage: toFormText(profile.preferredLanguage) || "English",
+    highestEducation: toFormText(profile.highestEducation),
+    currentStatus: toFormText(profile.currentStatus),
+    intendedLevel: denormalizeEducationLevel(profile.intendedLevel),
+    intendedYear: toFormText(profile.intendedYear),
+    preferredMode: toFormText(profile.preferredMode),
+    preferredLocation: toFormText(profile.preferredLocation),
+    olYear: toFormText(profile.olYear),
+    olType: toFormText(profile.olType),
+    olMedium: toFormText(profile.olMedium),
+    olPassed: toFormText(profile.olPassed),
+    olA: toFormText(profile.olACount),
+    olB: toFormText(profile.olBCount),
+    olC: toFormText(profile.olCCount),
+    mathsGrade: toFormText(profile.mathsGrade),
+    scienceGrade: toFormText(profile.scienceGrade),
+    englishGrade: toFormText(profile.englishGrade),
+    alYear: toFormText(profile.alYear),
+    alStream: toFormText(profile.alStream),
+    alMedium: toFormText(profile.alMedium),
+    subject1: toFormText(profile.subject1),
+    grade1: toFormText(profile.grade1),
+    subject2: toFormText(profile.subject2),
+    grade2: toFormText(profile.grade2),
+    subject3: toFormText(profile.subject3),
+    grade3: toFormText(profile.grade3),
+    zScore: toFormText(profile.zScore),
+    englishTest: toFormText(profile.englishTest),
+    overallScore: toFormText(profile.overallScore),
+    examYear: toFormText(profile.examYear),
+    householdIncome: toFormText(profile.householdIncome),
+    dependents: toFormText(profile.dependents),
+    employmentStatus: toFormText(profile.employmentStatus),
+    governmentAssistance: toFormText(profile.governmentAssistance),
+    background: toFormText(profile.background),
+    disability: toFormText(profile.disability) || "No",
+    sports: toFormText(profile.sports) || "No",
+    leadership: toFormText(profile.leadership) || "No",
+    firstGeneration: toFormText(profile.firstGeneration) || "No",
+    preferredCountries: profile.preferredCountries || [],
+    preferredFields: profile.preferredFields || [],
+    scholarshipType: denormalizeScholarshipType(profile.scholarshipType),
+    willingToReturn: toFormText(profile.willingToReturn),
+  });
+
+  useEffect(() => {
+    const currentUser = getAuthenticatedStudentUser();
+    const storedUserId = Number(localStorage.getItem(STUDENT_ID_KEY));
+    const studentUserId =
+      currentUser?.id ??
+      (Number.isFinite(storedUserId) && storedUserId > 0
+          ? storedUserId
+          : null);
+
+    if (currentUser) {
+      localStorage.setItem(STUDENT_ID_KEY, String(currentUser.id));
+    }
+
+    if (currentUser?.email) {
+      setFormData((prev) =>
+        prev.email ? prev : { ...prev, email: currentUser.email },
+      );
+    }
+
+    if (!studentUserId) return;
+
+    let isActive = true;
+    scholarshipApi
+      .getStudentProfile(studentUserId)
+      .then((response) => {
+        if (!isActive || !response.success || !response.data) return;
+        studentProfileCache.setProfile(response.data);
+        setFormData(
+          mapProfileResponseToFormData(response.data, currentUser?.email),
+        );
+      })
+      .catch(() => {
+        // New students will not have a profile until they complete this form.
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const toOptionalText = (value: string) =>
+    value && value.trim().length > 0 ? value.trim() : undefined;
+
+  const toOptionalInt = (value: string) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
+  const toOptionalNumber = (value: string) => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
+  const normalizeEducationLevel = (value: string) => {
+    if (!value) return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (
+      normalized.includes("bachelor") ||
+      normalized.includes("undergraduate")
+    ) {
+      return "UNDERGRADUATE";
+    }
+    if (normalized.includes("master") || normalized.includes("postgraduate")) {
+      return "POSTGRADUATE";
+    }
+    if (normalized.includes("phd") || normalized.includes("doctor")) {
+      return "PHD";
+    }
+    return value.trim();
+  };
+
+  const normalizeScholarshipType = (value: string) => {
+    switch (value) {
+      case "Fully Funded":
+        return "FULL";
+      case "Partial":
+        return "PARTIAL";
+      case "Tuition Only":
+        return "TUITION";
+      case "Living Allowance":
+        return "LIVING_EXPENSES";
+      case "Any":
+      default:
+        return undefined;
+    }
+  };
+
+  const normalizeHouseholdIncome = (value: string) => {
+    if (!value || value === "prefer-not-to-say") {
+      return undefined;
+    }
+    return value;
+  };
+
+  const normalizeEnglishTest = (value: string) => {
+    if (!value || value === "None" || value === "O/L A/L Only") {
+      return undefined;
+    }
+    return value;
+  };
+
+  const buildProfileRequest = (data: FormData): StudentProfileRequest => {
+    const storedUserId = localStorage.getItem(STUDENT_ID_KEY);
+    const currentUser = getAuthenticatedStudentUser();
+    const studentUserId = currentUser?.id;
+    const englishTest = normalizeEnglishTest(data.englishTest);
+
+    return {
+      userId: studentUserId ?? (storedUserId ? Number(storedUserId) : undefined),
+      fullName: data.fullName.trim(),
+      email: toOptionalText(data.email),
+      dateOfBirth: toOptionalText(data.dateOfBirth),
+      gender: toOptionalText(data.gender),
+      nationality: toOptionalText(data.nationality),
+      nicPassport: toOptionalText(data.nicPassport),
+      district: toOptionalText(data.district),
+      province: toOptionalText(data.province),
+      city: toOptionalText(data.city),
+      mobile: toOptionalText(data.mobile),
+      preferredLanguage: toOptionalText(data.preferredLanguage),
+      highestEducation: toOptionalText(data.highestEducation),
+      currentStatus: toOptionalText(data.currentStatus),
+      intendedLevel: normalizeEducationLevel(data.intendedLevel),
+      intendedYear: toOptionalText(data.intendedYear),
+      preferredMode: toOptionalText(data.preferredMode),
+      preferredLocation: toOptionalText(data.preferredLocation),
+      olYear: toOptionalText(data.olYear),
+      olType: toOptionalText(data.olType),
+      olMedium: toOptionalText(data.olMedium),
+      olPassed: toOptionalInt(data.olPassed) ?? null,
+      olACount: toOptionalInt(data.olA) ?? null,
+      olBCount: toOptionalInt(data.olB) ?? null,
+      olCCount: toOptionalInt(data.olC) ?? null,
+      mathsGrade: toOptionalText(data.mathsGrade),
+      scienceGrade: toOptionalText(data.scienceGrade),
+      englishGrade: toOptionalText(data.englishGrade),
+      alYear: toOptionalText(data.alYear),
+      alStream: toOptionalText(data.alStream),
+      alMedium: toOptionalText(data.alMedium),
+      subject1: toOptionalText(data.subject1),
+      grade1: toOptionalText(data.grade1),
+      subject2: toOptionalText(data.subject2),
+      grade2: toOptionalText(data.grade2),
+      subject3: toOptionalText(data.subject3),
+      grade3: toOptionalText(data.grade3),
+      zScore: toOptionalNumber(data.zScore) ?? null,
+      englishTest: englishTest ?? null,
+      overallScore: englishTest
+        ? (toOptionalText(data.overallScore) ?? null)
+        : null,
+      examYear: englishTest ? toOptionalText(data.examYear) : undefined,
+      householdIncome: normalizeHouseholdIncome(data.householdIncome) ?? null,
+      dependents: toOptionalInt(data.dependents) ?? null,
+      employmentStatus: toOptionalText(data.employmentStatus),
+      governmentAssistance: toOptionalText(data.governmentAssistance),
+      background: toOptionalText(data.background),
+      disability: toOptionalText(data.disability),
+      sports: toOptionalText(data.sports),
+      leadership: toOptionalText(data.leadership),
+      firstGeneration: toOptionalText(data.firstGeneration),
+      preferredCountries:
+        data.preferredCountries.length > 0
+          ? data.preferredCountries
+          : undefined,
+      preferredFields:
+        data.preferredFields.length > 0 ? data.preferredFields : undefined,
+      scholarshipType: normalizeScholarshipType(data.scholarshipType),
+      willingToReturn: toOptionalText(data.willingToReturn),
+    };
+  };
+
   const updateFormData = (field: keyof FormData, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updateNicPassport = (value: string) => {
+    updateFormData(
+      "nicPassport",
+      value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20),
+    );
   };
 
   const calculateAge = (dob: string) => {
@@ -215,12 +512,29 @@ export function StudentRegistration({
 
   const progress = (currentStep / steps.length) * 100;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentStep < steps.length) {
       setCurrentStep(currentStep + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } else {
-      onComplete(formData);
+      return;
+    }
+
+    setSubmitError("");
+    setIsSubmitting(true);
+    try {
+      const payload = buildProfileRequest(formData);
+      const response = await scholarshipApi.upsertStudentProfile(payload);
+
+      if (response.success && response.data) {
+        studentProfileCache.setProfile(response.data);
+        onComplete(formData);
+      } else {
+        throw new Error(response.message || "Failed to save student profile");
+      }
+    } catch (err: any) {
+      setSubmitError(err?.message || "Failed to save your profile. Try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -243,6 +557,8 @@ export function StudentRegistration({
         return (
           formData.fullName &&
           formData.dateOfBirth &&
+          formData.nicPassport &&
+          formData.district &&
           formData.email &&
           formData.mobile
         );
@@ -519,12 +835,16 @@ export function StudentRegistration({
                     <Input
                       id="nicPassport"
                       value={formData.nicPassport}
-                      onChange={(e) =>
-                        updateFormData("nicPassport", e.target.value)
-                      }
-                      placeholder="e.g., 199912345678 or N1234567"
+                      onChange={(e) => updateNicPassport(e.target.value)}
+                      placeholder="e.g., 123456789V or N1234567"
                       className="mt-1.5"
+                      inputMode="text"
+                      maxLength={20}
+                      pattern="[A-Za-z0-9]*"
                     />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Use letters and numbers only, up to 20 characters.
+                    </p>
                   </div>
 
                   <div>
@@ -541,19 +861,11 @@ export function StudentRegistration({
                         <SelectValue placeholder="Select district" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Colombo">Colombo</SelectItem>
-                        <SelectItem value="Gampaha">Gampaha</SelectItem>
-                        <SelectItem value="Kalutara">Kalutara</SelectItem>
-                        <SelectItem value="Kandy">Kandy</SelectItem>
-                        <SelectItem value="Matale">Matale</SelectItem>
-                        <SelectItem value="Nuwara Eliya">
-                          Nuwara Eliya
-                        </SelectItem>
-                        <SelectItem value="Galle">Galle</SelectItem>
-                        <SelectItem value="Matara">Matara</SelectItem>
-                        <SelectItem value="Hambantota">Hambantota</SelectItem>
-                        <SelectItem value="Jaffna">Jaffna</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
+                        {sriLankanDistricts.map((district) => (
+                          <SelectItem key={district} value={district}>
+                            {district}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1752,6 +2064,13 @@ export function StudentRegistration({
         </AnimatePresence>
       </Card>
 
+      {submitError && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 mt-0.5" />
+          <span>{submitError}</span>
+        </div>
+      )}
+
       {/* Navigation Buttons */}
       <div className="flex justify-between items-center gap-4">
         <Button
@@ -1773,13 +2092,13 @@ export function StudentRegistration({
 
         <Button
           onClick={handleNext}
-          disabled={!isStepValid()}
+          disabled={!isStepValid() || isSubmitting}
           className={`px-8 ${currentStep === steps.length ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
         >
           {currentStep === steps.length ? (
             <>
               <Check className="w-4 h-4 mr-2" />
-              Complete Registration
+              {isSubmitting ? "Saving Profile..." : "Complete Registration"}
             </>
           ) : (
             <>
@@ -1804,4 +2123,12 @@ export function StudentRegistration({
       </div>
     </div>
   );
+}
+
+function getAuthenticatedStudentUser() {
+  const currentUser = tokenService.isAuthenticated()
+    ? tokenService.getUser()
+    : null;
+
+  return currentUser?.role === "STUDENT" ? currentUser : null;
 }

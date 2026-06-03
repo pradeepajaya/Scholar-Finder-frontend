@@ -1,9 +1,24 @@
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { motion } from "framer-motion";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Textarea } from "./ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import {
   Search,
   Filter,
@@ -19,8 +34,33 @@ import {
   Heart,
   Zap,
   X,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  ClipboardCheck,
+  FileText,
+  Files,
+  Loader2,
+  Send,
+  Upload,
+  UserRound,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { matchesSearch } from "@/utils/search";
+import {
+  ApplicationDocumentDto,
+  ApplicationSubmitRequest,
+  scholarshipApi,
+  ScholarshipDto,
+  STUDENT_ID_KEY,
+  tokenService,
+} from "@/services/api";
+import {
+  getStoredStudentDocuments,
+  saveStudentDocuments,
+  type StudentDocument,
+} from "@/utils/studentDocuments";
 
 const scholarships = [
   {
@@ -353,6 +393,7 @@ const categories = [
 ];
 const countries = [
   "All Countries",
+  "Sri Lanka",
   "United Kingdom",
   "United States",
   "Germany",
@@ -361,7 +402,276 @@ const countries = [
   "Japan",
   "Multiple EU Countries",
 ];
-const levels = ["All Levels", "Bachelors", "Masters", "PhD"];
+const levels = [
+  "All Levels",
+  "Undergraduate",
+  "Postgraduate",
+  "Bachelors",
+  "Masters",
+  "PhD",
+];
+
+export type BrowseScholarship = (typeof scholarships)[number] & {
+  source: "backend" | "static";
+  coveragePercentage?: number;
+  eligibleCountries?: string[];
+  eligibleFields?: string[];
+  eligibleLevels?: string[];
+  minGpa?: number;
+  minAge?: number;
+  maxAge?: number;
+  requiredEnglishTest?: string;
+  minEnglishScore?: number;
+  minAlPasses?: number;
+  requiredAlStream?: string;
+  minZScore?: number;
+  requiresFinancialNeed?: boolean;
+  maxHouseholdIncome?: string;
+  sportsAchievementRequired?: boolean;
+  leadershipRequired?: boolean;
+  firstGenerationPriority?: boolean;
+  disabilityFriendly?: boolean;
+  returnToHomeRequired?: boolean;
+  startDate?: string;
+  endDate?: string;
+  durationMonths?: number;
+  requiredDocuments?: string[];
+  additionalRequirements?: string;
+  selectionCriteria?: string[];
+  applicationSteps?: string[];
+  applicationUrl?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  websiteUrl?: string;
+  viewsCount?: number;
+  totalApplications?: number;
+};
+
+type ApplicationFormState = {
+  fullName: string;
+  email: string;
+  phone: string;
+  currentEducation: string;
+  intendedLevel: string;
+  fieldOfStudy: string;
+  alStream: string;
+  alResults: string;
+  zScore: string;
+  gpa: string;
+  englishTest: string;
+  englishScore: string;
+  householdIncome: string;
+  achievements: string;
+  qualificationSummary: string;
+  coverLetter: string;
+};
+
+type DocumentChoice = {
+  source: "EXISTING_PROFILE_DOCUMENT" | "NEW_UPLOAD";
+  documentId?: string;
+  documentName?: string;
+  fileName?: string;
+};
+
+const sampleScholarships: BrowseScholarship[] = scholarships.map(
+  (scholarship) => ({
+    ...scholarship,
+    source: "static",
+  }),
+);
+
+const formatScholarshipType = (type?: string) => {
+  switch (type?.toUpperCase()) {
+    case "FULL":
+      return "Fully Funded";
+    case "PARTIAL":
+      return "Partial Funding";
+    case "TUITION":
+      return "Tuition Only";
+    case "LIVING_EXPENSES":
+      return "Living Allowance";
+    default:
+      return type || "Scholarship";
+  }
+};
+
+const formatLevel = (level: string) => {
+  switch (level.toUpperCase()) {
+    case "UNDERGRADUATE":
+      return "Undergraduate";
+    case "POSTGRADUATE":
+      return "Postgraduate";
+    case "PHD":
+      return "PhD";
+    default:
+      return level;
+  }
+};
+
+const formatAmount = (scholarship: ScholarshipDto) => {
+  const type = scholarship.scholarshipType?.toUpperCase();
+
+  if (type === "FULL") {
+    return "Full Funding";
+  }
+
+  if (scholarship.amount && scholarship.currency) {
+    return `${scholarship.currency} ${Number(scholarship.amount).toLocaleString()}`;
+  }
+
+  if (scholarship.coveragePercentage) {
+    return `${scholarship.coveragePercentage}% Coverage`;
+  }
+
+  return "Contact for details";
+};
+
+export const mapBackendScholarship = (
+  scholarship: ScholarshipDto,
+): BrowseScholarship => {
+  const eligibleCountries = scholarship.eligibleCountries ?? [];
+  const eligibleFields = scholarship.eligibleFields ?? [];
+  const eligibleLevels = (scholarship.eligibleLevels ?? []).map(formatLevel);
+  const category = formatScholarshipType(scholarship.scholarshipType);
+
+  return {
+    id: scholarship.id,
+    source: "backend",
+    title: scholarship.title,
+    provider:
+      scholarship.providerName || `Institution #${scholarship.institutionId}`,
+    country:
+      eligibleCountries.length > 1
+        ? eligibleCountries.join(", ")
+        : eligibleCountries[0] || "Multiple countries",
+    amount: formatAmount(scholarship),
+    deadline: scholarship.applicationDeadline || "",
+    fieldOfStudy:
+      eligibleFields.length > 0 ? eligibleFields.join(", ") : "All Fields",
+    level: eligibleLevels.length > 0 ? eligibleLevels.join(", ") : "All Levels",
+    description:
+      scholarship.description || "Scholarship details are being updated.",
+    requirements:
+      scholarship.requiredDocuments && scholarship.requiredDocuments.length > 0
+        ? scholarship.requiredDocuments
+        : ["Review the complete scholarship details before applying"],
+    benefits:
+      scholarship.benefits && scholarship.benefits.length > 0
+        ? scholarship.benefits
+        : [formatAmount(scholarship)],
+    imageUrl:
+      scholarship.imageUrl ||
+      "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1080",
+    category,
+    featured: Boolean(scholarship.isFeatured),
+    coveragePercentage: scholarship.coveragePercentage,
+    eligibleCountries,
+    eligibleFields,
+    eligibleLevels,
+    minGpa: scholarship.minGpa,
+    minAge: scholarship.minAge,
+    maxAge: scholarship.maxAge,
+    requiredEnglishTest: scholarship.requiredEnglishTest,
+    minEnglishScore: scholarship.minEnglishScore,
+    minAlPasses: scholarship.minAlPasses,
+    requiredAlStream: scholarship.requiredAlStream,
+    minZScore: scholarship.minZScore,
+    requiresFinancialNeed: scholarship.requiresFinancialNeed,
+    maxHouseholdIncome: scholarship.maxHouseholdIncome,
+    sportsAchievementRequired: scholarship.sportsAchievementRequired,
+    leadershipRequired: scholarship.leadershipRequired,
+    firstGenerationPriority: scholarship.firstGenerationPriority,
+    disabilityFriendly: scholarship.disabilityFriendly,
+    returnToHomeRequired: scholarship.returnToHomeRequired,
+    startDate: scholarship.startDate,
+    endDate: scholarship.endDate,
+    durationMonths: scholarship.durationMonths,
+    requiredDocuments: scholarship.requiredDocuments,
+    additionalRequirements: scholarship.additionalRequirements,
+    selectionCriteria: scholarship.selectionCriteria,
+    applicationSteps: scholarship.applicationSteps,
+    applicationUrl: scholarship.applicationUrl,
+    contactEmail: scholarship.contactEmail,
+    contactPhone: scholarship.contactPhone,
+    websiteUrl: scholarship.websiteUrl,
+    viewsCount: scholarship.viewsCount,
+    totalApplications: scholarship.totalApplications,
+  };
+};
+
+const normalizeDocumentName = (value: string) =>
+  value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+const findMatchingUploadedDocument = (
+  requirement: string,
+  documents: StudentDocument[],
+) => {
+  const normalizedRequirement = normalizeDocumentName(requirement);
+
+  return documents.find((document) => {
+    const normalizedName = normalizeDocumentName(document.name);
+    return (
+      normalizedName.includes(normalizedRequirement) ||
+      normalizedRequirement.includes(normalizedName)
+    );
+  });
+};
+
+const getStudentIdForApplication = () => {
+  const storedId = Number(localStorage.getItem(STUDENT_ID_KEY));
+  if (Number.isFinite(storedId) && storedId > 0) {
+    return storedId;
+  }
+
+  const userId = tokenService.getUser()?.id;
+  return userId && userId > 0 ? userId : null;
+};
+
+const getRegistrationDraft = () => {
+  try {
+    return JSON.parse(localStorage.getItem("scholarFinderProgress") || "{}");
+  } catch {
+    return {};
+  }
+};
+
+const asText = (value: unknown) => {
+  if (Array.isArray(value)) return value.filter(Boolean).join(", ");
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value;
+  return "";
+};
+
+const getInitialApplicationForm = (
+  scholarship: BrowseScholarship | null,
+): ApplicationFormState => {
+  const draft = getRegistrationDraft();
+  const user = tokenService.getUser();
+
+  return {
+    fullName: asText(draft.fullName),
+    email: user?.email || asText(draft.email),
+    phone: asText(draft.mobile),
+    currentEducation: asText(draft.highestEducation),
+    intendedLevel: asText(draft.intendedLevel) || scholarship?.level || "",
+    fieldOfStudy:
+      asText(draft.preferredFields) || scholarship?.fieldOfStudy || "",
+    alStream: asText(draft.alStream),
+    alResults: [draft.grade1, draft.grade2, draft.grade3]
+      .filter(Boolean)
+      .join(", "),
+    zScore: asText(draft.zScore),
+    gpa: "",
+    englishTest: asText(draft.englishTest),
+    englishScore: asText(draft.overallScore),
+    householdIncome: asText(draft.householdIncome),
+    achievements: [draft.sports, draft.leadership, draft.background]
+      .filter(Boolean)
+      .join("\n"),
+    qualificationSummary: "",
+    coverLetter: "",
+  };
+};
 
 export function ScholarshipsPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -369,34 +679,96 @@ export function ScholarshipsPage() {
   const [selectedCountry, setSelectedCountry] = useState("All Countries");
   const [selectedLevel, setSelectedLevel] = useState("All Levels");
   const [showFilters, setShowFilters] = useState(false);
+  const [apiScholarships, setApiScholarships] = useState<BrowseScholarship[]>(
+    [],
+  );
+  const [isLoadingScholarships, setIsLoadingScholarships] = useState(true);
+  const [scholarshipLoadError, setScholarshipLoadError] = useState("");
+  const [selectedScholarship, setSelectedScholarship] =
+    useState<BrowseScholarship | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+  const [applicationScholarship, setApplicationScholarship] =
+    useState<BrowseScholarship | null>(null);
+  const [isApplicationOpen, setIsApplicationOpen] = useState(false);
 
   // Temporary filter states (for the dropdowns before applying)
   const [tempCategory, setTempCategory] = useState("All");
   const [tempCountry, setTempCountry] = useState("All Countries");
   const [tempLevel, setTempLevel] = useState("All Levels");
 
-  const featuredScholarships = scholarships.filter((s) => s.featured);
-  const regularScholarships = scholarships.filter((s) => !s.featured);
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchScholarships = async () => {
+      setIsLoadingScholarships(true);
+      setScholarshipLoadError("");
+
+      try {
+        const response = await scholarshipApi.getScholarships();
+        if (isMounted) {
+          setApiScholarships((response.data ?? []).map(mapBackendScholarship));
+        }
+      } catch (error) {
+        console.error("Failed to load scholarships:", error);
+        if (isMounted) {
+          setApiScholarships([]);
+          setScholarshipLoadError(
+            "Showing sample scholarships while the backend is unavailable.",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingScholarships(false);
+        }
+      }
+    };
+
+    fetchScholarships();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const availableScholarships =
+    apiScholarships.length > 0 ? apiScholarships : sampleScholarships;
 
   // Filter scholarships based on search and filters
-  const filteredScholarships = regularScholarships.filter((scholarship) => {
-    const matchesSearch =
-      scholarship.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      scholarship.provider.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      scholarship.fieldOfStudy
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase());
+  const filteredScholarships = availableScholarships.filter((scholarship) => {
+    const matchesSearchQuery = matchesSearch(searchQuery, [
+      scholarship.title,
+      scholarship.provider,
+      scholarship.country,
+      scholarship.amount,
+      scholarship.deadline,
+      scholarship.fieldOfStudy,
+      scholarship.level,
+      scholarship.description,
+      scholarship.requirements,
+      scholarship.benefits,
+      scholarship.category,
+    ]);
     const matchesCategory =
       selectedCategory === "All" || scholarship.category === selectedCategory;
     const matchesCountry =
       selectedCountry === "All Countries" ||
-      scholarship.country === selectedCountry;
+      scholarship.country.toLowerCase().includes(selectedCountry.toLowerCase());
     const matchesLevel =
       selectedLevel === "All Levels" ||
-      scholarship.level.includes(selectedLevel);
+      scholarship.level.toLowerCase().includes(selectedLevel.toLowerCase()) ||
+      (selectedLevel === "Bachelors" &&
+        scholarship.level.toLowerCase().includes("undergraduate")) ||
+      (selectedLevel === "Masters" &&
+        scholarship.level.toLowerCase().includes("postgraduate"));
 
-    return matchesSearch && matchesCategory && matchesCountry && matchesLevel;
+    return (
+      matchesSearchQuery && matchesCategory && matchesCountry && matchesLevel
+    );
   });
+  const featuredScholarships = filteredScholarships.filter((s) => s.featured);
+  const regularScholarships = filteredScholarships.filter((s) => !s.featured);
 
   // Count active filters
   const activeFiltersCount =
@@ -422,7 +794,51 @@ export function ScholarshipsPage() {
     setSearchQuery("");
   };
 
-  const getDaysUntilDeadline = (deadline: string) => {
+  const handleViewDetails = async (scholarship: BrowseScholarship) => {
+    setSelectedScholarship(scholarship);
+    setIsDetailsOpen(true);
+    setDetailsError("");
+
+    if (scholarship.source !== "backend") {
+      return;
+    }
+
+    setIsDetailsLoading(true);
+    try {
+      const response = await scholarshipApi.getScholarship(scholarship.id);
+      setSelectedScholarship(mapBackendScholarship(response.data));
+    } catch (error) {
+      console.error("Failed to load scholarship details:", error);
+      setDetailsError(
+        "Could not refresh the latest backend details. Showing the list details instead.",
+      );
+    } finally {
+      setIsDetailsLoading(false);
+    }
+  };
+
+  const handleApplyNow = async (scholarship: BrowseScholarship) => {
+    setApplicationScholarship(scholarship);
+    setIsApplicationOpen(true);
+    setIsDetailsOpen(false);
+
+    if (scholarship.source !== "backend") {
+      return;
+    }
+
+    try {
+      const response = await scholarshipApi.getScholarship(scholarship.id);
+      setApplicationScholarship(mapBackendScholarship(response.data));
+    } catch (error) {
+      console.error("Failed to refresh scholarship before applying:", error);
+    }
+  };
+
+  const getDaysUntilDeadline = (deadline?: string) => {
+    if (!deadline) {
+      return Number.POSITIVE_INFINITY;
+    }
+
     const today = new Date();
     const deadlineDate = new Date(deadline);
     const diffTime = deadlineDate.getTime() - today.getTime();
@@ -612,6 +1028,14 @@ export function ScholarshipsPage() {
         )}
       </Card>
 
+      {(isLoadingScholarships || scholarshipLoadError) && (
+        <div className="mb-8 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          {isLoadingScholarships
+            ? "Loading latest scholarships from the backend..."
+            : scholarshipLoadError}
+        </div>
+      )}
+
       {/* Featured Scholarships */}
       {featuredScholarships.length > 0 && (
         <div className="mb-16">
@@ -632,6 +1056,8 @@ export function ScholarshipsPage() {
                 index={index}
                 featured={true}
                 daysUntilDeadline={getDaysUntilDeadline(scholarship.deadline)}
+                onViewDetails={handleViewDetails}
+                onApplyNow={handleApplyNow}
               />
             ))}
           </div>
@@ -673,6 +1099,9 @@ export function ScholarshipsPage() {
                   setSelectedCategory("All");
                   setSelectedCountry("All Countries");
                   setSelectedLevel("All Levels");
+                  setTempCategory("All");
+                  setTempCountry("All Countries");
+                  setTempLevel("All Levels");
                 }}
                 className="bg-blue-600 hover:bg-blue-700 text-white"
               >
@@ -680,18 +1109,24 @@ export function ScholarshipsPage() {
               </Button>
             </div>
           </Card>
-        ) : (
+        ) : regularScholarships.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredScholarships.map((scholarship, index) => (
+            {regularScholarships.map((scholarship, index) => (
               <ScholarshipCard
                 key={scholarship.id}
                 scholarship={scholarship}
                 index={index}
                 featured={false}
                 daysUntilDeadline={getDaysUntilDeadline(scholarship.deadline)}
+                onViewDetails={handleViewDetails}
+                onApplyNow={handleApplyNow}
               />
             ))}
           </div>
+        ) : (
+          <Card className="p-8 text-center text-slate-600">
+            Matching results are shown in the featured section above.
+          </Card>
         )}
       </div>
 
@@ -726,20 +1161,1298 @@ export function ScholarshipsPage() {
           </p>
         </div>
       </div>
+
+      <ScholarshipDetailsDialog
+        scholarship={selectedScholarship}
+        open={isDetailsOpen}
+        onOpenChange={setIsDetailsOpen}
+        isLoading={isDetailsLoading}
+        error={detailsError}
+        onApplyNow={handleApplyNow}
+      />
+      <ScholarshipApplicationDialog
+        scholarship={applicationScholarship}
+        open={isApplicationOpen}
+        onOpenChange={setIsApplicationOpen}
+      />
     </div>
   );
 }
 
-function ScholarshipCard({
+function formatDate(date?: string) {
+  if (!date) return "Not specified";
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  return parsed.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function DetailSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function DetailList({ items }: { items?: string[] }) {
+  const visibleItems = (items ?? []).filter(Boolean);
+
+  if (visibleItems.length === 0) {
+    return <p className="text-sm text-slate-500">Not specified</p>;
+  }
+
+  return (
+    <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {visibleItems.map((item) => (
+        <li
+          key={item}
+          className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+        >
+          {item}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value?: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+      <div className="mt-1 text-sm font-semibold text-slate-900">
+        {value !== undefined && value !== null && value !== ""
+          ? value
+          : "Not specified"}
+      </div>
+    </div>
+  );
+}
+
+export function ScholarshipDetailsDialog({
+  scholarship,
+  open,
+  onOpenChange,
+  isLoading,
+  error,
+  onApplyNow,
+  contentClassName = "",
+}: {
+  scholarship: BrowseScholarship | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  isLoading: boolean;
+  error: string;
+  onApplyNow: (scholarship: BrowseScholarship) => void;
+  contentClassName?: string;
+}) {
+  if (!scholarship) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent />
+      </Dialog>
+    );
+  }
+
+  const eligibilityItems = [
+    scholarship.eligibleCountries?.length
+      ? `Eligible countries: ${scholarship.eligibleCountries.join(", ")}`
+      : `Eligible countries: ${scholarship.country}`,
+    scholarship.eligibleFields?.length
+      ? `Fields: ${scholarship.eligibleFields.join(", ")}`
+      : `Fields: ${scholarship.fieldOfStudy}`,
+    scholarship.eligibleLevels?.length
+      ? `Study levels: ${scholarship.eligibleLevels.join(", ")}`
+      : `Study levels: ${scholarship.level}`,
+    scholarship.minGpa ? `Minimum GPA: ${scholarship.minGpa}` : "",
+    scholarship.minAge || scholarship.maxAge
+      ? `Age range: ${scholarship.minAge ?? "Any"}-${scholarship.maxAge ?? "Any"}`
+      : "",
+    scholarship.minAlPasses
+      ? `Minimum A/L passes: ${scholarship.minAlPasses}`
+      : "",
+    scholarship.requiredAlStream
+      ? `Required A/L stream: ${scholarship.requiredAlStream}`
+      : "",
+    scholarship.minZScore ? `Minimum Z-score: ${scholarship.minZScore}` : "",
+    scholarship.requiredEnglishTest
+      ? `${scholarship.requiredEnglishTest} score: ${scholarship.minEnglishScore ?? "Required"}`
+      : "",
+    scholarship.requiresFinancialNeed
+      ? `Financial need required${scholarship.maxHouseholdIncome ? ` up to ${scholarship.maxHouseholdIncome}` : ""}`
+      : "",
+    scholarship.leadershipRequired ? "Leadership experience required" : "",
+    scholarship.sportsAchievementRequired
+      ? "Sports achievement required"
+      : "",
+    scholarship.firstGenerationPriority
+      ? "Priority for first-generation university students"
+      : "",
+    scholarship.disabilityFriendly ? "Disability-friendly scholarship" : "",
+    scholarship.returnToHomeRequired
+      ? "Return-to-home commitment required"
+      : "",
+  ].filter(Boolean);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={`max-w-4xl max-h-[90vh] overflow-y-auto ${contentClassName}`}
+      >
+        <DialogHeader>
+          <DialogTitle className="text-2xl leading-tight">
+            {scholarship.title}
+          </DialogTitle>
+          <DialogDescription>
+            {scholarship.provider} - {scholarship.country}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-8">
+          <div className="relative h-56 overflow-hidden rounded-lg">
+            <ImageWithFallback
+              src={scholarship.imageUrl}
+              alt={scholarship.title}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+            <div className="absolute bottom-4 left-4 flex flex-wrap gap-2">
+              <Badge className="bg-white text-slate-900">
+                {scholarship.category}
+              </Badge>
+              {scholarship.featured && (
+                <Badge className="bg-yellow-500 text-white">Featured</Badge>
+              )}
+            </div>
+          </div>
+
+          {isLoading && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              Loading latest backend details...
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              {error}
+            </div>
+          )}
+
+          <p className="text-slate-700 leading-relaxed">
+            {scholarship.description}
+          </p>
+
+          <DetailSection title="Key Details">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <DetailField label="Funding" value={scholarship.amount} />
+              <DetailField label="Deadline" value={formatDate(scholarship.deadline)} />
+              <DetailField label="Study Level" value={scholarship.level} />
+              <DetailField
+                label="Duration"
+                value={
+                  scholarship.durationMonths
+                    ? `${scholarship.durationMonths} months`
+                    : scholarship.startDate || scholarship.endDate
+                      ? `${formatDate(scholarship.startDate)} to ${formatDate(scholarship.endDate)}`
+                      : undefined
+                }
+              />
+            </div>
+          </DetailSection>
+
+          <DetailSection title="Benefits & Coverage">
+            <DetailList items={scholarship.benefits} />
+          </DetailSection>
+
+          <DetailSection title="Eligibility">
+            <DetailList items={eligibilityItems} />
+          </DetailSection>
+
+          <DetailSection title="Required Documents">
+            <DetailList
+              items={scholarship.requiredDocuments ?? scholarship.requirements}
+            />
+          </DetailSection>
+
+          <DetailSection title="Selection Criteria">
+            <DetailList items={scholarship.selectionCriteria} />
+          </DetailSection>
+
+          <DetailSection title="Application Steps">
+            <DetailList items={scholarship.applicationSteps} />
+          </DetailSection>
+
+          {scholarship.additionalRequirements && (
+            <DetailSection title="Additional Requirements">
+              <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                {scholarship.additionalRequirements}
+              </p>
+            </DetailSection>
+          )}
+
+          <DetailSection title="Contact & Links">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <DetailField label="Email" value={scholarship.contactEmail} />
+              <DetailField label="Phone" value={scholarship.contactPhone} />
+              <DetailField label="Applications" value={scholarship.totalApplications} />
+              <DetailField label="Views" value={scholarship.viewsCount} />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <Button
+                onClick={() => onApplyNow(scholarship)}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Apply Now
+              </Button>
+              {scholarship.applicationUrl && (
+                <Button variant="outline" asChild>
+                  <a
+                    href={scholarship.applicationUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Provider Application Link
+                  </a>
+                </Button>
+              )}
+              {scholarship.websiteUrl && (
+                <Button variant="outline" asChild>
+                  <a
+                    href={scholarship.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Visit Provider Website
+                  </a>
+                </Button>
+              )}
+              {scholarship.contactEmail && (
+                <Button variant="outline" asChild>
+                  <a href={`mailto:${scholarship.contactEmail}`}>
+                    Email Contact
+                  </a>
+                </Button>
+              )}
+            </div>
+          </DetailSection>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function ScholarshipApplicationDialog({
+  scholarship,
+  open,
+  onOpenChange,
+}: {
+  scholarship: BrowseScholarship | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [formData, setFormData] = useState<ApplicationFormState>(
+    getInitialApplicationForm(scholarship),
+  );
+  const [documents, setDocuments] = useState<StudentDocument[]>(
+    getStoredStudentDocuments,
+  );
+  const [documentChoices, setDocumentChoices] = useState<
+    Record<string, DocumentChoice>
+  >({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [submitSuccess, setSubmitSuccess] = useState("");
+  const [currentStep, setCurrentStep] = useState(0);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+
+  const requiredDocuments = (
+    scholarship?.requiredDocuments?.length
+      ? scholarship.requiredDocuments
+      : scholarship?.requirements ?? []
+  ).filter(Boolean);
+  const uploadedDocuments = documents.filter(
+    (document) => document.status === "uploaded",
+  );
+  const missingDocuments = requiredDocuments.filter((requirement) => {
+    const choice = documentChoices[requirement];
+    return !choice?.documentId && !choice?.fileName;
+  });
+  const missingProfileFields = [
+    { field: "fullName" as const, label: "full name" },
+    { field: "email" as const, label: "email" },
+  ].filter(({ field }) => !formData[field].trim());
+  const missingQualificationFields = [
+    {
+      field: "qualificationSummary" as const,
+      label: "qualification summary",
+    },
+  ].filter(({ field }) => !formData[field].trim());
+  const profileComplete = missingProfileFields.length === 0;
+  const qualificationComplete = missingQualificationFields.length === 0;
+  const documentsComplete = missingDocuments.length === 0;
+  const attachedDocumentCount =
+    requiredDocuments.length - missingDocuments.length;
+  const requirementItems =
+    scholarship?.selectionCriteria?.length
+      ? scholarship.selectionCriteria
+      : scholarship?.requirements;
+  const applicationSteps = [
+    {
+      title: "Profile",
+      description: "Contact and study details",
+      icon: UserRound,
+      complete: profileComplete,
+    },
+    {
+      title: "Qualifications",
+      description: "Eligibility and statement",
+      icon: ClipboardCheck,
+      complete: qualificationComplete,
+    },
+    {
+      title: "Documents",
+      description: "Attachments and review",
+      icon: Files,
+      complete: documentsComplete,
+    },
+  ];
+  const completedStepCount = applicationSteps.filter(
+    (step) => step.complete,
+  ).length;
+  const progressPercentage = Math.round(
+    (completedStepCount / applicationSteps.length) * 100,
+  );
+
+  useEffect(() => {
+    if (!open) return;
+
+    const storedDocuments = getStoredStudentDocuments();
+    const uploaded = storedDocuments.filter(
+      (document) => document.status === "uploaded",
+    );
+
+    setDocuments(storedDocuments);
+    setFormData(getInitialApplicationForm(scholarship));
+    setSubmitError("");
+    setSubmitSuccess("");
+    setAttemptedSubmit(false);
+    setCurrentStep(0);
+
+    const nextChoices = requiredDocuments.reduce<
+      Record<string, DocumentChoice>
+    >((choices, requirement) => {
+      const match = findMatchingUploadedDocument(requirement, uploaded);
+      if (match) {
+        choices[requirement] = {
+          source: "EXISTING_PROFILE_DOCUMENT",
+          documentId: match.id,
+          documentName: match.name,
+          fileName: match.fileName,
+        };
+      }
+      return choices;
+    }, {});
+
+    setDocumentChoices(nextChoices);
+  }, [open, scholarship?.id]);
+
+  const updateField = (
+    field: keyof ApplicationFormState,
+    value: string,
+  ) => {
+    setFormData((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleExistingDocumentChange = (
+    requirement: string,
+    documentId: string,
+  ) => {
+    const selectedDocument = uploadedDocuments.find(
+      (document) => document.id === documentId,
+    );
+
+    setDocumentChoices((current) => {
+      const next = { ...current };
+      if (!selectedDocument) {
+        delete next[requirement];
+        return next;
+      }
+
+      next[requirement] = {
+        source: "EXISTING_PROFILE_DOCUMENT",
+        documentId: selectedDocument.id,
+        documentName: selectedDocument.name,
+        fileName: selectedDocument.fileName,
+      };
+      return next;
+    });
+  };
+
+  const handleRequirementUpload = (
+    requirement: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const existingDocument = documents.find(
+      (document) =>
+        normalizeDocumentName(document.name) ===
+        normalizeDocumentName(requirement),
+    );
+    const uploadedDocument: StudentDocument = {
+      id:
+        existingDocument?.id ||
+        `application-${Date.now()}-${normalizeDocumentName(requirement)}`,
+      name: requirement,
+      status: "uploaded",
+      fileName: file.name,
+      uploadedAt: new Date().toISOString(),
+    };
+    const nextDocuments = existingDocument
+      ? documents.map((document) =>
+          document.id === existingDocument.id ? uploadedDocument : document,
+        )
+      : [...documents, uploadedDocument];
+
+    setDocuments(nextDocuments);
+    saveStudentDocuments(nextDocuments);
+    setDocumentChoices((current) => ({
+      ...current,
+      [requirement]: {
+        source: "NEW_UPLOAD",
+        documentId: uploadedDocument.id,
+        documentName: uploadedDocument.name,
+        fileName: uploadedDocument.fileName,
+      },
+    }));
+    event.target.value = "";
+  };
+
+  const buildDocumentPayload = (): ApplicationDocumentDto[] =>
+    requiredDocuments.map((requirement) => {
+      const choice = documentChoices[requirement];
+      return {
+        requirementName: requirement,
+        source: choice?.source ?? "NEW_UPLOAD",
+        documentId: choice?.documentId,
+        documentName: choice?.documentName ?? requirement,
+        fileName: choice?.fileName,
+      };
+    });
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!scholarship) return;
+
+    const studentId = getStudentIdForApplication();
+
+    setAttemptedSubmit(true);
+    setSubmitError("");
+    setSubmitSuccess("");
+
+    if (scholarship.source !== "backend") {
+      setSubmitError(
+        "This sample scholarship cannot receive applications until the backend scholarship list is available.",
+      );
+      return;
+    }
+
+    if (!studentId) {
+      setSubmitError(
+        "Please log in or complete student registration before submitting an application.",
+      );
+      return;
+    }
+
+    if (missingProfileFields.length > 0) {
+      setCurrentStep(0);
+      setSubmitError(
+        `Please complete your ${missingProfileFields
+          .map((field) => field.label)
+          .join(" and ")} before submitting.`,
+      );
+      return;
+    }
+
+    if (missingQualificationFields.length > 0) {
+      setCurrentStep(1);
+      setSubmitError("Please add a qualification summary before submitting.");
+      return;
+    }
+
+    if (missingDocuments.length > 0) {
+      setCurrentStep(2);
+      setSubmitError(
+        `Please attach documents for: ${missingDocuments.join(", ")}.`,
+      );
+      return;
+    }
+
+    const payload: ApplicationSubmitRequest = {
+      ...formData,
+      studentId,
+      scholarshipId: scholarship.id,
+      requiredDocuments,
+      documents: buildDocumentPayload(),
+    };
+
+    setIsSubmitting(true);
+    try {
+      const response = await scholarshipApi.submitApplication(
+        scholarship.id,
+        payload,
+      );
+      setSubmitSuccess(
+        response.data.updatedExistingApplication
+          ? "Your existing application was updated successfully."
+          : "Your application was submitted successfully.",
+      );
+    } catch (error) {
+      console.error("Failed to submit application:", error);
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : "Could not submit the application. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const goToPreviousStep = () => {
+    setSubmitError("");
+    setCurrentStep((step) => Math.max(step - 1, 0));
+  };
+
+  const goToNextStep = () => {
+    setSubmitError("");
+    setCurrentStep((step) =>
+      Math.min(step + 1, applicationSteps.length - 1),
+    );
+  };
+
+  const renderInput = (
+    field: keyof ApplicationFormState,
+    label: string,
+    options: {
+      type?: string;
+      placeholder?: string;
+      required?: boolean;
+    } = {},
+  ) => {
+    const hasError =
+      attemptedSubmit && Boolean(options.required) && !formData[field].trim();
+
+    return (
+      <div
+        className={`space-y-2.5 rounded-xl border bg-white p-4 shadow-sm transition ${
+          hasError
+            ? "border-red-300 ring-1 ring-red-100"
+            : "border-slate-200 hover:border-slate-300"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <Label
+            htmlFor={`application-${String(field)}`}
+            className="text-sm font-semibold tracking-wide text-slate-700"
+          >
+            {label}
+          </Label>
+          {options.required && (
+            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold uppercase text-blue-700">
+              Required
+            </span>
+          )}
+        </div>
+        <Input
+          id={`application-${String(field)}`}
+          type={options.type}
+          value={formData[field]}
+          onChange={(event) => updateField(field, event.target.value)}
+          placeholder={options.placeholder}
+          className={`h-12 rounded-lg border bg-white px-4 text-base shadow-sm placeholder:text-slate-400 ${
+            hasError
+              ? "border-red-300 focus-visible:border-red-400 focus-visible:ring-red-200"
+              : "border-slate-300 focus-visible:border-blue-500 focus-visible:ring-blue-200"
+          }`}
+        />
+        {hasError && (
+          <p className="text-sm font-semibold text-red-700">
+            This field is required.
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  const renderTextarea = (
+    field: keyof ApplicationFormState,
+    label: string,
+    options: {
+      placeholder?: string;
+      required?: boolean;
+      minHeight?: string;
+    } = {},
+  ) => {
+    const hasError =
+      attemptedSubmit && Boolean(options.required) && !formData[field].trim();
+
+    return (
+      <div
+        className={`space-y-2.5 rounded-xl border bg-white p-4 shadow-sm transition ${
+          hasError
+            ? "border-red-300 ring-1 ring-red-100"
+            : "border-slate-200 hover:border-slate-300"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <Label
+            htmlFor={`application-${String(field)}`}
+            className="text-sm font-semibold tracking-wide text-slate-700"
+          >
+            {label}
+          </Label>
+          {options.required && (
+            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold uppercase text-blue-700">
+              Required
+            </span>
+          )}
+        </div>
+        <Textarea
+          id={`application-${String(field)}`}
+          value={formData[field]}
+          onChange={(event) => updateField(field, event.target.value)}
+          className={`rounded-lg px-4 py-3 text-base leading-relaxed ${
+            options.minHeight ?? "min-h-32"
+          } ${
+            hasError
+              ? "border-red-300 focus-visible:border-red-400 focus-visible:ring-red-200"
+              : "border-slate-300 focus-visible:border-blue-500 focus-visible:ring-blue-200"
+          }`}
+          placeholder={options.placeholder}
+        />
+        {hasError && (
+          <p className="text-sm font-semibold text-red-700">
+            This field is required.
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  const renderStepContent = () => {
+    if (!scholarship) return null;
+
+    const activeScholarship = scholarship;
+
+    if (currentStep === 0) {
+      return (
+        <section className="space-y-8">
+          <div>
+            <div className="flex items-center gap-2 text-blue-700">
+              <UserRound className="h-6 w-6" />
+              <h3 className="text-2xl font-bold text-slate-900">
+                Applicant Profile
+              </h3>
+            </div>
+            <p className="mt-2 text-base text-slate-600">
+              Review the details that will identify this application.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-x-6 gap-y-5 xl:grid-cols-2">
+            {renderInput("fullName", "Full Name", {
+              placeholder: "Your full name",
+              required: true,
+            })}
+            {renderInput("email", "Email", {
+              type: "email",
+              placeholder: "you@example.com",
+              required: true,
+            })}
+            {renderInput("phone", "Phone", {
+              placeholder: "+94 ...",
+            })}
+            {renderInput("currentEducation", "Current Education", {
+              placeholder: "A/L, Diploma, Undergraduate, etc.",
+            })}
+            {renderInput("intendedLevel", "Intended Level", {
+              placeholder: "Undergraduate, Postgraduate, PhD",
+            })}
+            {renderInput("fieldOfStudy", "Field Of Study", {
+              placeholder: "IT, Engineering, Medicine, etc.",
+            })}
+          </div>
+
+          <div className="rounded-lg border border-blue-100 bg-blue-50 p-5">
+            <p className="text-base font-semibold text-blue-950">
+              Applying to {activeScholarship.title}
+            </p>
+            <div className="mt-4 grid gap-4 text-base text-blue-900 sm:grid-cols-3">
+              <div>
+                <p className="font-medium">Provider</p>
+                <p>{activeScholarship.provider}</p>
+              </div>
+              <div>
+                <p className="font-medium">Funding</p>
+                <p>{activeScholarship.amount}</p>
+              </div>
+              <div>
+                <p className="font-medium">Deadline</p>
+                <p>{activeScholarship.deadline || "Not specified"}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (currentStep === 1) {
+      return (
+        <section className="space-y-8">
+          <div>
+            <div className="flex items-center gap-2 text-blue-700">
+              <ClipboardCheck className="h-6 w-6" />
+              <h3 className="text-2xl font-bold text-slate-900">
+                Qualifications
+              </h3>
+            </div>
+            <p className="mt-2 text-base text-slate-600">
+              Add the academic and eligibility details that support your match.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-base">
+            <p className="mb-3 text-base font-semibold text-slate-900">
+              Scholarship Requirements
+            </p>
+            <DetailList items={requirementItems} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-x-6 gap-y-5 xl:grid-cols-2">
+            {renderInput("alStream", "A/L Stream", {
+              placeholder: "Science, Commerce, Arts, Technology",
+            })}
+            {renderInput("alResults", "A/L Results", {
+              placeholder: "A, B, C or subject-wise results",
+            })}
+            {renderInput("zScore", "Z-Score", {
+              placeholder: "Optional",
+            })}
+            {renderInput("gpa", "GPA / Average", {
+              placeholder: "Optional",
+            })}
+            {renderInput("englishTest", "English Test", {
+              placeholder: "IELTS, TOEFL, PTE",
+            })}
+            {renderInput("englishScore", "English Score", {
+              placeholder: "Optional",
+            })}
+          </div>
+
+          {renderInput("householdIncome", "Household Income", {
+            placeholder: "Optional for need-based scholarships",
+          })}
+          {renderTextarea(
+            "achievements",
+            "Achievements, Leadership, Or Special Circumstances",
+            {
+              minHeight: "min-h-32",
+              placeholder:
+                "List projects, leadership roles, sports, awards, volunteering, or other relevant context.",
+            },
+          )}
+          {renderTextarea("qualificationSummary", "Qualification Summary", {
+            required: true,
+            minHeight: "min-h-40",
+            placeholder:
+              "Explain how your qualifications meet this scholarship's requirements.",
+          })}
+          {renderTextarea(
+            "coverLetter",
+            "Cover Letter / Personal Statement",
+            {
+              minHeight: "min-h-44",
+              placeholder:
+                "Write the statement you want to submit with this scholarship application.",
+            },
+          )}
+        </section>
+      );
+    }
+
+    return (
+      <section className="space-y-8">
+        <div>
+          <div className="flex items-center gap-2 text-blue-700">
+            <Files className="h-6 w-6" />
+            <h3 className="text-2xl font-bold text-slate-900">
+              Documents And Review
+            </h3>
+          </div>
+          <p className="mt-2 text-base text-slate-600">
+            Attach the required documents and confirm the application summary.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-base font-semibold text-slate-900">
+                Documents attached
+              </p>
+              <p className="text-base text-slate-600">
+                {requiredDocuments.length === 0
+                  ? "No required documents listed"
+                  : `${attachedDocumentCount} of ${requiredDocuments.length} required documents ready`}
+              </p>
+            </div>
+            <Badge
+              className={
+                documentsComplete
+                  ? "bg-green-100 text-green-800"
+                  : "bg-amber-100 text-amber-900"
+              }
+            >
+              {documentsComplete ? "Complete" : "Needs documents"}
+            </Badge>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-blue-600 transition-all"
+              style={{
+                width:
+                  requiredDocuments.length === 0
+                    ? "100%"
+                    : `${Math.round(
+                        (attachedDocumentCount / requiredDocuments.length) *
+                          100,
+                      )}%`,
+              }}
+            />
+          </div>
+        </div>
+
+        {requiredDocuments.length === 0 ? (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-base text-slate-600">
+            This scholarship has no required documents listed.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {requiredDocuments.map((requirement) => {
+              const choice = documentChoices[requirement];
+              const isAttached = Boolean(choice?.documentId || choice?.fileName);
+              const inputId = `document-upload-${activeScholarship.id}-${normalizeDocumentName(
+                requirement,
+              )}`;
+
+              return (
+                <div
+                  key={requirement}
+                  className={`rounded-lg border p-5 ${
+                    isAttached
+                      ? "border-green-200 bg-green-50/70"
+                      : attemptedSubmit
+                        ? "border-red-200 bg-red-50/70"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_30rem] lg:items-center">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <FileText className="h-5 w-5 text-blue-600" />
+                        <p className="text-base font-semibold text-slate-900">
+                          {requirement}
+                        </p>
+                        {isAttached && (
+                          <Badge className="bg-green-100 text-green-800">
+                            Attached
+                          </Badge>
+                        )}
+                      </div>
+                      {choice?.fileName ? (
+                        <p className="mt-2 text-base text-slate-600">
+                          {choice.fileName}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-base text-slate-500">
+                          Choose an uploaded profile document or attach a new
+                          file.
+                        </p>
+                      )}
+                      {attemptedSubmit && !isAttached && (
+                        <p className="mt-2 text-sm font-semibold text-red-700">
+                          This document is required.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
+                      <select
+                        value={
+                          choice?.source === "EXISTING_PROFILE_DOCUMENT"
+                            ? choice.documentId ?? ""
+                            : ""
+                        }
+                        onChange={(event) =>
+                          handleExistingDocumentChange(
+                            requirement,
+                            event.target.value,
+                          )
+                        }
+                        className="h-12 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-4 text-base text-slate-900"
+                      >
+                        <option value="">Use uploaded document</option>
+                        {uploadedDocuments.map((document) => (
+                          <option key={document.id} value={document.id}>
+                            {document.name}
+                            {document.fileName
+                              ? ` - ${document.fileName}`
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <Label
+                        htmlFor={inputId}
+                        className="inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-base font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload
+                      </Label>
+                      <Input
+                        id={inputId}
+                        type="file"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        className="hidden"
+                        onChange={(event) =>
+                          handleRequirementUpload(requirement, event)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {uploadedDocuments.length === 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-base text-amber-900">
+            No profile documents are uploaded yet. Files attached here will be
+            available from the profile document list later.
+          </div>
+        )}
+
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-5">
+          <p className="text-base font-semibold text-slate-900">
+            Application Review
+          </p>
+          <div className="mt-4 grid gap-4 text-base text-slate-700 md:grid-cols-2">
+            <div>
+              <p className="font-medium text-slate-900">Applicant</p>
+              <p>{formData.fullName || "Not entered"}</p>
+            </div>
+            <div>
+              <p className="font-medium text-slate-900">Email</p>
+              <p>{formData.email || "Not entered"}</p>
+            </div>
+            <div>
+              <p className="font-medium text-slate-900">Level</p>
+              <p>{formData.intendedLevel || "Not entered"}</p>
+            </div>
+            <div>
+              <p className="font-medium text-slate-900">Field</p>
+              <p>{formData.fieldOfStudy || "Not entered"}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  if (!scholarship) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent />
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] overflow-hidden p-0"
+        style={{
+          width: "96vw",
+          maxWidth: "108rem",
+        }}
+      >
+        <div className="flex h-full min-h-0 flex-col bg-slate-50">
+          <DialogHeader className="border-b border-slate-200 bg-white px-6 py-6 pr-16 shadow-sm sm:px-8 lg:px-12 lg:pr-20">
+            <DialogTitle className="text-3xl leading-tight">
+              Apply for {scholarship.title}
+            </DialogTitle>
+            <DialogDescription className="mt-2 text-base">
+              {scholarship.provider} - {scholarship.amount}
+            </DialogDescription>
+          </DialogHeader>
+
+          {submitSuccess ? (
+            <div className="space-y-6 px-6 py-8 sm:px-8 lg:px-12">
+              <div className="rounded-lg border border-green-200 bg-green-50 p-6 text-green-900">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-6 w-6 flex-shrink-0" />
+                  <div>
+                    <p className="text-lg font-semibold">{submitSuccess}</p>
+                    <p className="mt-2 text-base">
+                      You can continue tracking this application from your
+                      profile once application tracking is enabled.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <Button
+                onClick={() => onOpenChange(false)}
+                className="h-12 w-full text-base"
+              >
+                Done
+              </Button>
+            </div>
+          ) : (
+            <form
+              onSubmit={handleSubmit}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="grid min-h-full xl:grid-cols-[minmax(0,1fr)_24rem]">
+                  <div className="bg-white px-6 py-8 pb-12 sm:px-8 lg:px-12">
+                    {submitError && (
+                      <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-base text-red-800">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                          <p>{submitError}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mb-8 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
+                      {applicationSteps.map((step, index) => {
+                        const StepIcon = step.icon;
+                        const isActive = currentStep === index;
+
+                        return (
+                          <button
+                            key={step.title}
+                            type="button"
+                            onClick={() => setCurrentStep(index)}
+                            className={`h-full rounded-xl border bg-white p-4 text-left shadow-sm transition ${
+                              isActive
+                                ? "border-blue-300 ring-1 ring-blue-200"
+                                : "border-slate-200 hover:border-blue-200 hover:shadow"
+                            }`}
+                          >
+                            <div className="flex h-full items-center gap-3">
+                              <span
+                                className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                                  step.complete
+                                    ? "bg-green-100 text-green-700"
+                                    : isActive
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-slate-100 text-slate-500"
+                                }`}
+                              >
+                                {step.complete ? (
+                                  <CheckCircle2 className="h-5 w-5" />
+                                ) : (
+                                  <StepIcon className="h-5 w-5" />
+                                )}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-base font-semibold text-slate-900">
+                                  {step.title}
+                                </span>
+                                <span className="hidden text-sm text-slate-500 sm:block">
+                                  {step.description}
+                                </span>
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {renderStepContent()}
+                  </div>
+
+                  <aside className="hidden border-l border-slate-200 bg-slate-100 p-8 xl:block">
+                    <div className="sticky top-4 space-y-5">
+                      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <p className="text-base font-semibold text-slate-900">
+                          Application Progress
+                        </p>
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className="h-full rounded-full bg-blue-600 transition-all"
+                            style={{ width: `${progressPercentage}%` }}
+                          />
+                        </div>
+                        <p className="mt-2 text-sm text-slate-600">
+                          {completedStepCount} of {applicationSteps.length} steps
+                          ready
+                        </p>
+                      </div>
+
+                      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        {applicationSteps.map((step, index) => (
+                          <button
+                            key={step.title}
+                            type="button"
+                            onClick={() => setCurrentStep(index)}
+                            className={`flex w-full items-center gap-3 rounded-lg border p-4 text-left ${
+                              currentStep === index
+                                ? "border-blue-300 bg-blue-50"
+                                : "border-transparent bg-transparent hover:border-slate-200"
+                            }`}
+                          >
+                            <span
+                              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
+                                step.complete
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-slate-200 text-slate-600"
+                              }`}
+                            >
+                              {step.complete ? (
+                                <CheckCircle2 className="h-5 w-5" />
+                              ) : (
+                                index + 1
+                              )}
+                            </span>
+                            <span>
+                              <span className="block text-base font-semibold text-slate-900">
+                                {step.title}
+                              </span>
+                              <span className="text-sm text-slate-500">
+                                {step.description}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-white p-5 text-base text-slate-700 shadow-sm">
+                        <p className="font-semibold text-slate-900">
+                          Scholarship Summary
+                        </p>
+                        <div className="mt-3 space-y-3">
+                          <div className="flex items-start gap-2">
+                            <DollarSign className="mt-0.5 h-5 w-5 text-blue-600" />
+                            <span>{scholarship.amount}</span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <Calendar className="mt-0.5 h-5 w-5 text-blue-600" />
+                            <span>{scholarship.deadline || "Not specified"}</span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <FileText className="mt-0.5 h-5 w-5 text-blue-600" />
+                            <span>
+                              {requiredDocuments.length === 0
+                                ? "No required documents"
+                                : `${attachedDocumentCount} / ${requiredDocuments.length} documents attached`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </aside>
+                </div>
+              </div>
+
+              <div className="z-20 border-t border-slate-200 bg-white px-6 py-5 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] sm:px-8 lg:px-12 lg:py-6">
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => onOpenChange(false)}
+                    className="h-12 px-5 text-base"
+                  >
+                    Cancel
+                  </Button>
+                  <div className="flex flex-col-reverse gap-3 sm:flex-row">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={goToPreviousStep}
+                      disabled={currentStep === 0 || isSubmitting}
+                      className="h-12 px-5 text-base"
+                    >
+                      <ChevronLeft className="mr-2 h-5 w-5" />
+                      Back
+                    </Button>
+                    {currentStep < applicationSteps.length - 1 ? (
+                      <Button
+                        type="button"
+                        onClick={goToNextStep}
+                        className="h-12 bg-blue-600 px-6 text-base text-white hover:bg-blue-700"
+                      >
+                        Next
+                        <ChevronRight className="ml-2 h-5 w-5" />
+                      </Button>
+                    ) : (
+                      <Button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="h-12 bg-blue-600 px-6 text-base text-white hover:bg-blue-700"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            Submitting
+                          </>
+                        ) : (
+                          <>
+                            <Send className="mr-2 h-5 w-5" />
+                            Submit Application
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </form>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function ScholarshipCard({
   scholarship,
   index,
   featured,
   daysUntilDeadline,
+  onViewDetails,
+  onApplyNow,
 }: {
-  scholarship: (typeof scholarships)[0];
+  scholarship: BrowseScholarship;
   index: number;
   featured: boolean;
   daysUntilDeadline: number;
+  onViewDetails: (scholarship: BrowseScholarship) => void;
+  onApplyNow: (scholarship: BrowseScholarship) => void;
 }) {
   const isUrgent = daysUntilDeadline <= 30 && daysUntilDeadline > 0;
   const isExpired = daysUntilDeadline < 0;
@@ -804,10 +2517,15 @@ function ScholarshipCard({
                 ? "Expired"
                 : isUrgent
                   ? `${daysUntilDeadline} days left`
-                  : new Date(scholarship.deadline).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                    })}
+                  : scholarship.deadline
+                    ? new Date(scholarship.deadline).toLocaleDateString(
+                        "en-GB",
+                        {
+                          day: "numeric",
+                          month: "short",
+                        },
+                      )
+                    : "No deadline"}
             </Badge>
           </div>
         </div>
@@ -843,9 +2561,21 @@ function ScholarshipCard({
           </p>
 
           {/* CTA */}
-          <Button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white shadow-md">
-            View Details
-          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              onClick={() => onViewDetails(scholarship)}
+              className="w-full"
+            >
+              View Details
+            </Button>
+            <Button
+              onClick={() => onApplyNow(scholarship)}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md hover:opacity-90"
+            >
+              Apply Now
+            </Button>
+          </div>
         </div>
       </Card>
     </motion.div>

@@ -1,6 +1,5 @@
 package com.scholarfinder.scholarship.service;
 
-import com.scholarfinder.scholarship.config.MatchingConfig;
 import com.scholarfinder.scholarship.dto.*;
 import com.scholarfinder.scholarship.entity.Scholarship;
 import com.scholarfinder.scholarship.entity.StudentProfile;
@@ -8,6 +7,7 @@ import com.scholarfinder.scholarship.repository.ScholarshipRepository;
 import com.scholarfinder.scholarship.repository.StudentProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +26,6 @@ public class ScholarshipService {
     private final ScholarshipRepository scholarshipRepository;
     private final StudentProfileRepository studentProfileRepository;
     private final MatchingService matchingService;
-    private final MatchingConfig matchingConfig;
 
     /**
      * Get all matched scholarships for a student.
@@ -53,7 +52,8 @@ public class ScholarshipService {
             MatchResult matchResult = matchingService.calculateMatch(student, scholarship);
             
             // Filter by minimum match percentage
-            if (matchResult.getMatchPercentage().intValue() >= request.getMinimumMatchPercentage()) {
+            if (matchResult.isEligible()
+                    && matchResult.getMatchPercentage().intValue() >= request.getMinimumMatchPercentage()) {
                 ScholarshipMatchDto dto = mapToMatchDto(scholarship, matchResult);
                 matchedScholarships.add(dto);
 
@@ -96,10 +96,12 @@ public class ScholarshipService {
      */
     @Transactional(readOnly = true)
     public MatchResult getMatchDetails(Long studentUserId, Long scholarshipId) {
-        StudentProfile student = studentProfileRepository.findByUserId(studentUserId)
+        Long safeStudentUserId = requireId(studentUserId, "Student");
+        Long safeScholarshipId = requireId(scholarshipId, "Scholarship");
+        StudentProfile student = studentProfileRepository.findByUserId(safeStudentUserId)
             .orElseThrow(() -> new RuntimeException("Student profile not found"));
         
-        Scholarship scholarship = scholarshipRepository.findById(scholarshipId)
+        Scholarship scholarship = scholarshipRepository.findById(safeScholarshipId)
             .orElseThrow(() -> new RuntimeException("Scholarship not found"));
 
         return matchingService.calculateMatch(student, scholarship);
@@ -112,9 +114,10 @@ public class ScholarshipService {
         LocalDate today = LocalDate.now();
         List<Scholarship> scholarships;
 
-        if (request.getScholarshipIds() != null && !request.getScholarshipIds().isEmpty()) {
+        List<Long> scholarshipIds = request.getScholarshipIds();
+        if (scholarshipIds != null && !scholarshipIds.isEmpty()) {
             // Get specific scholarships
-            scholarships = scholarshipRepository.findAllById(request.getScholarshipIds());
+            scholarships = scholarshipRepository.findAllById(requireIds(scholarshipIds));
         } else {
             // Get all active scholarships
             scholarships = scholarshipRepository.findActiveScholarships(today);
@@ -164,7 +167,7 @@ public class ScholarshipService {
             .id(scholarship.getId())
             .title(scholarship.getTitle())
             .description(scholarship.getDescription())
-            .provider("Institution #" + scholarship.getInstitutionId()) // TODO: Fetch actual institution name
+            .provider(resolveProviderName(scholarship))
             .country(scholarship.getEligibleCountries() != null && scholarship.getEligibleCountries().length > 0 
                      ? scholarship.getEligibleCountries()[0] : "Multiple")
             .scholarshipType(scholarship.getScholarshipType())
@@ -176,12 +179,21 @@ public class ScholarshipService {
             .applicationDeadline(scholarship.getApplicationDeadline())
             .deadlineDisplay(deadlineDisplay)
             .isFeatured(Boolean.TRUE.equals(scholarship.getIsFeatured()))
+            .applyLink(scholarship.getApplicationUrl())
+            .imageUrl(scholarship.getImageUrl())
             .matchPercentage(matchResult.getMatchPercentage())
             .matchQuality(matchResult.getMatchQuality().name())
             .matchedCriteria(matchedStrings)
             .unmatchedCriteria(unmatchedStrings)
             .isEligible(matchResult.isEligible())
             .build();
+    }
+
+    private String resolveProviderName(Scholarship scholarship) {
+        if (scholarship.getProviderName() != null && !scholarship.getProviderName().isBlank()) {
+            return scholarship.getProviderName();
+        }
+        return "Institution #" + scholarship.getInstitutionId();
     }
 
     private String formatAmount(Scholarship scholarship) {
@@ -260,7 +272,24 @@ public class ScholarshipService {
      */
     @Transactional(readOnly = true)
     public Optional<Scholarship> getScholarshipById(Long id) {
-        return scholarshipRepository.findById(id);
+        Long scholarshipId = requireId(id, "Scholarship");
+        return scholarshipRepository.findById(scholarshipId);
+    }
+
+    @NonNull
+    private Long requireId(Long id, String label) {
+        if (id == null) {
+            throw new IllegalArgumentException(label + " id is required");
+        }
+        return id;
+    }
+
+    @NonNull
+    private List<Long> requireIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new IllegalArgumentException("Scholarship ids are required");
+        }
+        return ids;
     }
 
     /**

@@ -16,6 +16,8 @@ import StudentLogin from "./components/StudentLogin";
 import { InstitutionLogin } from "./components/InstitutionLogin";
 import { AdminLogin } from "./components/AdminLogin";
 import { InstitutionDashboard } from "./components/InstitutionDashboard";
+import { Toaster } from "sonner";
+import { STUDENT_ID_KEY, tokenService } from "./services/api";
 
 type Page =
   | "home"
@@ -36,22 +38,35 @@ type Page =
 type UserType = "student" | "institution" | "admin";
 
 export default function App() {
+  const hasStoredAuth = tokenService.isAuthenticated();
+  const storedUser = hasStoredAuth ? tokenService.getUser() : null;
   const [currentPage, setCurrentPage] = useState<Page>("home");
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userType, setUserType] = useState<UserType | null>(null);
+  const [isRegistered, setIsRegistered] = useState(
+    () =>
+      !!localStorage.getItem(STUDENT_ID_KEY) || storedUser?.role === "STUDENT",
+  );
+  const [isLoggedIn, setIsLoggedIn] = useState(() =>
+    hasStoredAuth,
+  );
+  const [userType, setUserType] = useState<UserType | null>(() => {
+    if (storedUser?.role === "STUDENT") return "student";
+    if (storedUser?.role === "INSTITUTION") return "institution";
+    if (storedUser?.role === "ADMIN") return "admin";
+    return null;
+  });
 
   const handleLogout = () => {
     setIsLoggedIn(false);
     setUserType(null);
     setIsRegistered(false);
     setCurrentPage("home");
+    tokenService.clearTokens();
   };
 
   const handleStudentRegistration = (data: any) => {
-    console.log("Student registration data:", data);
     setIsRegistered(true);
-    setCurrentPage("matches");
+    setUserType("student");
+    setCurrentPage("profile");
   };
 
   const handleLogin = (type: UserType) => {
@@ -124,7 +139,9 @@ export default function App() {
       case "contact":
         return <ContactPage />;
       case "profile":
-        return <UserProfile />;
+        return (
+          <UserProfile onNavigate={(page) => setCurrentPage(page as Page)} />
+        );
       case "admin":
         return <AdminPortal />;
       case "institution-dashboard":
@@ -152,8 +169,8 @@ export default function App() {
       <main className="min-h-[calc(100vh-80px)]">{renderPage()}</main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-slate-50 mt-20">
-        <div className="max-w-7xl mx-auto px-6 py-12 bg-[rgba(154,213,255,0.58)]">
+      <footer className="border-t border-slate-200 bg-[rgba(154,213,255,0.58)] mt-20 w-full">
+        <div className="max-w-7xl mx-auto px-6 py-12">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
@@ -253,6 +270,8 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      <Toaster position="top-right" richColors closeButton />
     </div>
   );
 }

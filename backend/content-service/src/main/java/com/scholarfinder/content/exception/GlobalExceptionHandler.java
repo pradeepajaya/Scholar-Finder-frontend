@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -46,7 +47,7 @@ public class GlobalExceptionHandler {
         
         logger.warn("Validation failed: {}", errors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(new ApiResponse<>(false, "Validation failed", errors));
+            .body(new ApiResponse<>(false, "Validation failed", errors, LocalDateTime.now()));
     }
 
     @ExceptionHandler(Exception.class)

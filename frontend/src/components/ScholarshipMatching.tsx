@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -14,6 +15,7 @@ import {
   TrendingUp,
   Lock,
   UserPlus,
+  Bookmark,
 } from "lucide-react";
 import {
   Accordion,
@@ -22,6 +24,23 @@ import {
   AccordionTrigger,
 } from "./ui/accordion";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import {
+  MatchResponse,
+  ScholarshipMatchDto,
+  STUDENT_ID_KEY,
+  scholarshipApi,
+  tokenService,
+} from "@/services/api";
+import {
+  getStoredSavedScholarships,
+  saveScholarship,
+} from "@/utils/savedScholarships";
+import {
+  BrowseScholarship,
+  ScholarshipDetailsDialog,
+  ScholarshipApplicationDialog,
+  mapBackendScholarship,
+} from "./ScholarshipsPage";
 
 interface ScholarshipMatch {
   id: number;
@@ -56,141 +75,151 @@ interface ScholarshipMatchingProps {
   ) => void;
 }
 
-const mockScholarships: ScholarshipMatch[] = [
-  {
-    id: 1,
-    name: "Commonwealth Master's Scholarship 2026",
-    provider: "Commonwealth Scholarship Commission",
-    country: "United Kingdom",
-    amount: "Fully Funded",
-    type: "Master's",
-    matchPercentage: 95,
-    deadline: "2026-03-31",
-    matchedCriteria: [
-      "Master's level study",
-      "English proficiency (IELTS 7.0+)",
-      "A/L qualifications with Science stream",
-      "Sri Lankan citizenship",
-      "Strong academic record (Z-score > 1.5)",
-      "Age requirement (under 35)",
-      "Need-based eligibility",
-    ],
-    unmatchedCriteria: ["Research proposal not yet submitted"],
-    applyLink:
-      "https://cscuk.fcdo.gov.uk/scholarships/commonwealth-masters-scholarships/",
-    description:
-      "Commonwealth Master's Scholarships are for students from low and middle income Commonwealth countries, for full-time Master's study at a UK university.",
-    imageUrl:
-      "https://images.unsplash.com/photo-1631599143424-5bc234fbebf1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx1bml2ZXJzaXR5JTIwY2FtcHVzJTIwYnVpbGRpbmd8ZW58MXx8fHwxNzY4NzEwNjAwfDA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 2,
-    name: "Mahapola Higher Education Scholarship",
-    provider: "Mahapola Higher Education Scholarship Trust Fund",
-    country: "Sri Lanka",
-    amount: "LKR 5,000/month",
-    type: "Undergraduate",
-    matchPercentage: 88,
-    deadline: "2026-02-28",
-    matchedCriteria: [
-      "Sri Lankan citizenship",
-      "A/L passed with good grades",
-      "Household income below threshold",
-      "University admission confirmed",
-      "Age requirement met",
-    ],
-    unmatchedCriteria: [
-      "Currently pursuing Master's (this is for undergraduates only)",
-      "Income bracket slightly higher than preferred",
-    ],
-    applyLink: "https://mahapola.gov.lk/",
-    description:
-      "The Mahapola Scholarship scheme provides financial assistance to undergraduates from low-income families pursuing higher education in Sri Lankan universities.",
-    imageUrl:
-      "https://images.unsplash.com/photo-1706528010331-0f12582db334?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxsaWJyYXJ5JTIwc3R1ZHlpbmclMjBib29rc3xlbnwxfHx8fDE3Njg3NDgyNDN8MA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 3,
-    name: "Australia Awards Scholarship",
-    provider: "Australian Government",
-    country: "Australia",
-    amount: "Fully Funded + Stipend",
-    type: "Master's / PhD",
-    matchPercentage: 92,
-    deadline: "2026-04-30",
-    matchedCriteria: [
-      "Master's or PhD level",
-      "English proficiency requirement met",
-      "Willing to return to home country",
-      "Development-focused field of study",
-      "Strong leadership potential",
-      "Age under 40",
-    ],
-    unmatchedCriteria: ["Minimum 2 years work experience preferred"],
-    applyLink: "https://www.australiaawardssrilanka.org/",
-    description:
-      "Australia Awards Scholarships provide opportunities for people from developing countries, particularly those countries located in the Indo-Pacific region, to undertake full-time undergraduate or postgraduate study at participating Australian universities.",
-    imageUrl:
-      "https://images.unsplash.com/photo-1724018305000-616597f21304?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzdHVkeSUyMGFicm9hZCUyMGludGVybmF0aW9uYWx8ZW58MXx8fHwxNzY4NzQ4MjQzfDA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 4,
-    name: "DAAD Masters Scholarship",
-    provider: "German Academic Exchange Service",
-    country: "Germany",
-    amount: "€861/month + Benefits",
-    type: "Master's",
-    matchPercentage: 85,
-    deadline: "2026-05-31",
-    matchedCriteria: [
-      "Master's level study",
-      "Bachelor's degree completed",
-      "Strong academic performance",
-      "Field of study matches STEM priority",
-      "Age requirement (under 32)",
-    ],
-    unmatchedCriteria: [
-      "German language proficiency (not mandatory but preferred)",
-      "Work experience required (minimum 2 years)",
-    ],
-    applyLink: "https://www.daad.de/en/",
-    description:
-      "The DAAD offers a range of opportunities to students and researchers from Sri Lanka. Master's scholarships are awarded for postgraduate courses with particular relevance to developing countries.",
-    imageUrl:
-      "https://images.unsplash.com/photo-1604336480714-ed7fa506014e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzY2hvbGFyc2hpcCUyMGF3YXJkJTIwZWR1Y2F0aW9ufGVufDF8fHx8MTc2ODY2NDM4OHww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 5,
-    name: "Fulbright Foreign Student Program",
-    provider: "US Department of State",
-    country: "United States",
-    amount: "Fully Funded",
-    type: "Master's / PhD",
-    matchPercentage: 90,
-    deadline: "2026-06-15",
-    matchedCriteria: [
-      "Master's or PhD level",
-      "Strong academic credentials",
-      "English proficiency (TOEFL/IELTS)",
-      "Leadership and extracurricular involvement",
-      "Sri Lankan citizenship",
-      "Willing to return to home country",
-    ],
-    unmatchedCriteria: ["GRE scores required (not yet submitted)"],
-    applyLink: "https://foreign.fulbrightonline.org/",
-    description:
-      "The Fulbright Program provides grants for graduate study, advanced research, university lecturing, and teaching in elementary and secondary schools worldwide.",
-    imageUrl:
-      "https://images.unsplash.com/photo-1686213011371-2aff28a08f16?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxncmFkdWF0aW9uJTIwY2VyZW1vbnklMjBzdHVkZW50c3xlbnwxfHx8fDE3Njg2ODE4NjV8MA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-];
+const mapMatchToCard = (match: ScholarshipMatchDto): ScholarshipMatch => {
+  const amountDisplay = match.amountDisplay?.trim();
+  const fallbackAmount =
+    match.amount && match.currency
+      ? `${match.currency} ${match.amount}`
+      : "Contact for details";
+
+  return {
+    id: match.id,
+    name: match.title,
+    provider: match.provider || "Scholarship Provider",
+    country: match.country || "Multiple",
+    amount: amountDisplay || fallbackAmount,
+    type: match.scholarshipType || "Scholarship",
+    matchPercentage: Number(match.matchPercentage || 0),
+    deadline: match.applicationDeadline || match.deadlineDisplay || "",
+    matchedCriteria: match.matchedCriteria || [],
+    unmatchedCriteria: match.unmatchedCriteria || [],
+    applyLink: match.applyLink || "",
+    description: match.description || "",
+    imageUrl: match.imageUrl || "",
+  };
+};
 
 export function ScholarshipMatching({
   isRegistered,
   onNavigate,
 }: ScholarshipMatchingProps) {
+  const [studentUserId] = useState<number | null>(() => {
+    const stored = localStorage.getItem(STUDENT_ID_KEY);
+    if (stored) {
+      return Number(stored);
+    }
+
+    const currentUser = tokenService.getUser();
+    if (currentUser?.role === "STUDENT") {
+      localStorage.setItem(STUDENT_ID_KEY, String(currentUser.id));
+      return currentUser.id;
+    }
+
+    return null;
+  });
+  const [scholarships, setScholarships] = useState<ScholarshipMatch[]>([]);
+  const [matchResponse, setMatchResponse] = useState<MatchResponse | null>(
+    null,
+  );
+  const [savedScholarshipIds, setSavedScholarshipIds] = useState<number[]>(() =>
+    getStoredSavedScholarships().map((scholarship) => scholarship.id),
+  );
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  const [selectedScholarship, setSelectedScholarship] = useState<BrowseScholarship | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+
+  const [applicationScholarship, setApplicationScholarship] = useState<BrowseScholarship | null>(null);
+  const [isApplicationOpen, setIsApplicationOpen] = useState(false);
+
+  const handleSaveScholarship = (scholarship: ScholarshipMatch) => {
+    const nextSaved = saveScholarship({
+      id: scholarship.id,
+      title: scholarship.name,
+      provider: scholarship.provider,
+      country: scholarship.country,
+      amount: scholarship.amount,
+      scholarshipType: scholarship.type,
+      deadline: scholarship.deadline,
+      applyLink: scholarship.applyLink,
+      description: scholarship.description,
+      imageUrl: scholarship.imageUrl,
+      matchPercentage: scholarship.matchPercentage,
+      matchedCriteria: scholarship.matchedCriteria,
+      unmatchedCriteria: scholarship.unmatchedCriteria,
+    });
+
+    setSavedScholarshipIds(nextSaved.map((item) => item.id));
+  };
+
+  const handleViewDetails = async (match: ScholarshipMatch) => {
+    setIsDetailsOpen(true);
+    setDetailsError("");
+    setIsDetailsLoading(true);
+    try {
+      const response = await scholarshipApi.getScholarship(match.id);
+      setSelectedScholarship(mapBackendScholarship(response.data));
+    } catch (error) {
+      console.error("Failed to load scholarship details:", error);
+      setDetailsError("Could not load details from the server.");
+    } finally {
+      setIsDetailsLoading(false);
+    }
+  };
+
+  const handleApplyNow = async (match: ScholarshipMatch | BrowseScholarship) => {
+    setIsApplicationOpen(true);
+    setIsDetailsOpen(false);
+    try {
+      const response = await scholarshipApi.getScholarship(match.id);
+      setApplicationScholarship(mapBackendScholarship(response.data));
+    } catch (error) {
+      console.error("Failed to refresh scholarship before applying:", error);
+    }
+  };
+
+  const fetchMatches = async () => {
+    if (!studentUserId) {
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadError("");
+    try {
+      const response = await scholarshipApi.getMatches({
+        studentUserId,
+        minimumMatchPercentage: 50,
+        limit: 20,
+        sortBy: "MATCH_DESC",
+      });
+
+      if (response.success && response.data) {
+        setMatchResponse(response.data);
+        setScholarships(response.data.scholarships.map(mapMatchToCard));
+      } else {
+        throw new Error(response.message || "Failed to load matches");
+      }
+    } catch (err: any) {
+      setLoadError(err?.message || "Failed to load your matches.");
+      setScholarships([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (studentUserId) {
+      fetchMatches();
+    }
+  }, [studentUserId]);
+
+  const canShowMatches = Boolean(studentUserId) || isRegistered;
+
   // If user is not registered, show registration prompt
-  if (!isRegistered) {
+  if (!canShowMatches || !studentUserId) {
     return (
       <div className="max-w-4xl mx-auto p-6 md:p-8">
         <motion.div
@@ -327,7 +356,33 @@ export function ScholarshipMatching({
     );
   }
 
-  // Original matched scholarships view for registered users
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 md:p-8">
+        <Card className="p-6 text-center">
+          <p className="text-slate-600">Loading your matches...</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 md:p-8">
+        <Card className="p-6 text-center space-y-4">
+          <p className="text-red-600">{loadError}</p>
+          <Button
+            onClick={fetchMatches}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            Try Again
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  // Matched scholarships view for registered users
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
       {/* Header Section */}
@@ -341,8 +396,8 @@ export function ScholarshipMatching({
               Your Matched Scholarships
             </h2>
             <p className="text-slate-600 mt-1">
-              Based on your profile, we found {mockScholarships.length}{" "}
-              scholarships that match your qualifications
+              Based on your profile, we found {scholarships.length} scholarships
+              that match your qualifications
             </p>
           </div>
         </div>
@@ -356,10 +411,8 @@ export function ScholarshipMatching({
               </div>
               <div>
                 <p className="text-2xl font-bold text-green-900">
-                  {
-                    mockScholarships.filter((s) => s.matchPercentage >= 90)
-                      .length
-                  }
+                  {matchResponse?.excellentMatches ??
+                    scholarships.filter((s) => s.matchPercentage >= 90).length}
                 </p>
                 <p className="text-sm text-green-700">
                   Excellent Matches (90%+)
@@ -376,8 +429,9 @@ export function ScholarshipMatching({
               <div>
                 <p className="text-2xl font-bold text-blue-900">
                   {
-                    mockScholarships.filter((s) => s.amount.includes("Fully"))
-                      .length
+                    scholarships.filter((s) =>
+                      s.amount.toLowerCase().includes("fully"),
+                    ).length
                   }
                 </p>
                 <p className="text-sm text-blue-700">
@@ -395,8 +449,8 @@ export function ScholarshipMatching({
               <div>
                 <p className="text-2xl font-bold text-purple-900">
                   {
-                    mockScholarships.filter(
-                      (s) => new Date(s.deadline) > new Date(),
+                    scholarships.filter(
+                      (s) => s.deadline && new Date(s.deadline) > new Date(),
                     ).length
                   }
                 </p>
@@ -407,9 +461,15 @@ export function ScholarshipMatching({
         </div>
       </div>
 
+      {scholarships.length === 0 && (
+        <Card className="p-8 text-center text-slate-600 mb-6">
+          No matches yet. Update your profile and try again.
+        </Card>
+      )}
+
       {/* Scholarship Cards Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {mockScholarships.map((scholarship, index) => (
+        {scholarships.map((scholarship, index) => (
           <motion.div
             key={scholarship.id}
             initial={{ opacity: 0, y: 20 }}
@@ -534,14 +594,16 @@ export function ScholarshipMatching({
                       </span>
                     </div>
                     <p className="text-sm font-semibold text-orange-900">
-                      {new Date(scholarship.deadline).toLocaleDateString(
-                        "en-GB",
-                        {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        },
-                      )}
+                      {scholarship.deadline
+                        ? new Date(scholarship.deadline).toLocaleDateString(
+                            "en-GB",
+                            {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            },
+                          )
+                        : "No deadline"}
                     </p>
                   </div>
                 </div>
@@ -612,25 +674,39 @@ export function ScholarshipMatching({
                 </Accordion>
 
                 {/* Action Buttons */}
-                <div className="mt-auto flex gap-3">
-                  <Button
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all"
-                    asChild
-                  >
-                    <a
-                      href={scholarship.applyLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                <div className="mt-auto pt-4 border-t border-slate-100">
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => handleViewDetails(scholarship)}
+                      className="w-full"
+                    >
+                      View Details
+                    </Button>
+                    <Button
+                      onClick={() => handleApplyNow(scholarship)}
+                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md hover:opacity-90"
                     >
                       Apply Now
-                      <ExternalLink className="w-4 h-4 ml-2" />
-                    </a>
-                  </Button>
+                    </Button>
+                  </div>
                   <Button
-                    variant="outline"
-                    className="flex-1 border-slate-300 hover:bg-slate-50"
+                    variant="ghost"
+                    onClick={() => handleSaveScholarship(scholarship)}
+                    disabled={savedScholarshipIds.includes(scholarship.id)}
+                    className="w-full text-slate-500 hover:text-blue-600 disabled:opacity-100"
+                    size="sm"
                   >
-                    Save
+                    <Bookmark
+                      className={`w-4 h-4 mr-2 ${
+                        savedScholarshipIds.includes(scholarship.id)
+                          ? "fill-blue-600 text-blue-600"
+                          : ""
+                      }`}
+                    />
+                    {savedScholarshipIds.includes(scholarship.id)
+                      ? "Saved to Profile"
+                      : "Save Scholarship"}
                   </Button>
                 </div>
               </div>
@@ -649,17 +725,35 @@ export function ScholarshipMatching({
           matches tailored to your goals.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Button className="bg-white text-blue-600 hover:bg-blue-50">
+          <Button
+            className="bg-white text-blue-600 hover:bg-blue-50"
+            onClick={() => onNavigate("student-register")}
+          >
             Update Profile
           </Button>
           <Button
             variant="outline"
             className="border-white text-[rgb(15,15,15)] hover:bg-white/10"
+            onClick={() => onNavigate("scholarships")}
           >
             Browse All Scholarships
           </Button>
         </div>
       </div>
+
+      <ScholarshipDetailsDialog
+        scholarship={selectedScholarship}
+        open={isDetailsOpen}
+        onOpenChange={setIsDetailsOpen}
+        isLoading={isDetailsLoading}
+        error={detailsError}
+        onApplyNow={handleApplyNow}
+      />
+      <ScholarshipApplicationDialog
+        scholarship={applicationScholarship}
+        open={isApplicationOpen}
+        onOpenChange={setIsApplicationOpen}
+      />
     </div>
   );
 }

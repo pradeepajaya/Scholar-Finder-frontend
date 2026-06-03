@@ -1,7 +1,9 @@
 package com.scholarfinder.scholarship.controller;
 
 import com.scholarfinder.scholarship.dto.*;
+import com.scholarfinder.scholarship.dto.InstitutionApplicationDto;
 import com.scholarfinder.scholarship.entity.Scholarship;
+import com.scholarfinder.scholarship.service.ApplicationService;
 import com.scholarfinder.scholarship.service.ScholarshipService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,10 +20,10 @@ import java.util.Map;
 @RequestMapping("/api/scholarships")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = "*")
 public class ScholarshipController {
 
     private final ScholarshipService scholarshipService;
+    private final ApplicationService applicationService;
 
     /**
      * Get matched scholarships for a student.
@@ -84,6 +86,70 @@ public class ScholarshipController {
             log.error("Error getting match details: {}", e.getMessage(), e);
             return ResponseEntity.badRequest()
                 .body(ApiResponse.error("Failed to get match details: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Submit a student's application for a scholarship.
+     *
+     * POST /api/scholarships/{scholarshipId}/apply
+     */
+    @PostMapping("/{scholarshipId}/apply")
+    public ResponseEntity<ApiResponse<ApplicationResponse>> submitApplication(
+            @PathVariable Long scholarshipId,
+            @RequestBody ApplicationSubmitRequest request) {
+
+        log.info("Submitting application for scholarship {}", scholarshipId);
+
+        try {
+            ApplicationResponse response = applicationService.submitApplication(scholarshipId, request);
+            return ResponseEntity.ok(ApiResponse.success(response, "Application submitted successfully"));
+        } catch (Exception e) {
+            log.error("Error submitting application: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to submit application: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get all applications submitted by a student.
+     *
+     * GET /api/scholarships/students/{studentId}/applications
+     */
+    @GetMapping("/students/{studentId}/applications")
+    public ResponseEntity<ApiResponse<List<StudentApplicationDto>>> getStudentApplications(
+            @PathVariable Long studentId) {
+
+        log.info("Getting applications for student {}", studentId);
+
+        try {
+            List<StudentApplicationDto> applications = applicationService.getApplicationsByStudentId(studentId);
+            return ResponseEntity.ok(ApiResponse.success(applications, "Applications retrieved successfully"));
+        } catch (Exception e) {
+            log.error("Error getting student applications: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to retrieve applications: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get all applications for an institution.
+     *
+     * GET /api/scholarships/institutions/{institutionId}/applications
+     */
+    @GetMapping("/institutions/{institutionId}/applications")
+    public ResponseEntity<ApiResponse<List<InstitutionApplicationDto>>> getInstitutionApplications(
+            @PathVariable Long institutionId) {
+
+        log.info("Getting applications for institution {}", institutionId);
+
+        try {
+            List<InstitutionApplicationDto> applications = applicationService.getApplicationsByInstitutionId(institutionId);
+            return ResponseEntity.ok(ApiResponse.success(applications, "Applications retrieved successfully"));
+        } catch (Exception e) {
+            log.error("Error getting applications: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to retrieve applications: " + e.getMessage()));
         }
     }
 
