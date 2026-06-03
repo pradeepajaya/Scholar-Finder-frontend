@@ -1,6 +1,7 @@
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 export const STUDENT_ID_KEY = 'scholar_finder_student_id';
+export const STUDENT_PROFILE_CACHE_KEY = 'scholar_finder_student_profile';
 
 // Types
 export interface LoginRequest {
@@ -43,6 +44,7 @@ export interface ApiResponse<T> {
 export interface StudentProfileRequest {
   userId?: number;
   fullName: string;
+  email?: string;
   dateOfBirth?: string;
   gender?: string;
   nationality?: string;
@@ -100,6 +102,61 @@ export interface StudentProfileRequest {
 export interface StudentProfileResponse {
   userId: number;
   fullName: string;
+  email?: string;
+  dateOfBirth?: string;
+  age?: number;
+  gender?: string;
+  nationality?: string;
+  nicPassport?: string;
+  district?: string;
+  province?: string;
+  city?: string;
+  mobile?: string;
+  preferredLanguage?: string;
+  highestEducation?: string;
+  currentStatus?: string;
+  intendedLevel?: string;
+  intendedYear?: string;
+  preferredMode?: string;
+  preferredLocation?: string;
+  olYear?: string;
+  olType?: string;
+  olMedium?: string;
+  olPassed?: number;
+  olACount?: number;
+  olBCount?: number;
+  olCCount?: number;
+  mathsGrade?: string;
+  scienceGrade?: string;
+  englishGrade?: string;
+  alYear?: string;
+  alStream?: string;
+  alMedium?: string;
+  subject1?: string;
+  grade1?: string;
+  subject2?: string;
+  grade2?: string;
+  subject3?: string;
+  grade3?: string;
+  zScore?: number;
+  calculatedGpa?: number;
+  englishTest?: string;
+  overallScore?: string;
+  examYear?: string;
+  householdIncome?: string;
+  dependents?: number;
+  employmentStatus?: string;
+  governmentAssistance?: string;
+  background?: string;
+  disability?: string;
+  sports?: string;
+  leadership?: string;
+  firstGeneration?: string;
+  preferredCountries?: string[];
+  preferredFields?: string[];
+  scholarshipType?: string;
+  willingToReturn?: string;
+  profilePictureUrl?: string;
   profileCompletionPercentage?: number;
 }
 
@@ -227,6 +284,18 @@ export interface ApplicationResponse {
   submittedAt: string;
 }
 
+export interface StudentApplicationResponse {
+  applicationId: number;
+  scholarshipId: number;
+  scholarshipTitle: string;
+  providerName?: string;
+  status: string;
+  appliedAt: string;
+  updatedAt: string;
+  matchPercentage?: number;
+  requiredDocuments?: string[];
+}
+
 export interface MatchResponse {
   studentId: number;
   studentName: string;
@@ -264,9 +333,40 @@ export const tokenService = {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(STUDENT_ID_KEY);
+    localStorage.removeItem(STUDENT_PROFILE_CACHE_KEY);
   },
   
   isAuthenticated: (): boolean => !!localStorage.getItem(TOKEN_KEY),
+};
+
+export const studentProfileCache = {
+  getProfile: (userId?: number | null): StudentProfileResponse | null => {
+    const cached = localStorage.getItem(STUDENT_PROFILE_CACHE_KEY);
+    if (!cached) return null;
+
+    try {
+      const profile = JSON.parse(cached) as StudentProfileResponse;
+      if (userId && profile.userId !== userId) {
+        return null;
+      }
+      return profile;
+    } catch {
+      localStorage.removeItem(STUDENT_PROFILE_CACHE_KEY);
+      return null;
+    }
+  },
+
+  setProfile: (profile: StudentProfileResponse): void => {
+    localStorage.setItem(STUDENT_PROFILE_CACHE_KEY, JSON.stringify(profile));
+    if (profile.userId) {
+      localStorage.setItem(STUDENT_ID_KEY, String(profile.userId));
+    }
+  },
+
+  clearProfile: (): void => {
+    localStorage.removeItem(STUDENT_PROFILE_CACHE_KEY);
+  },
 };
 
 // API client with authentication
@@ -440,6 +540,8 @@ export const scholarshipApi = {
     apiClient.post<StudentProfileResponse>('/scholarships/students', request),
   getStudentProfile: (userId: number) =>
     apiClient.get<StudentProfileResponse>(`/scholarships/students/${userId}`),
+  getStudentApplications: (studentId: number) =>
+    apiClient.get<StudentApplicationResponse[]>(`/scholarships/students/${studentId}/applications`),
   getScholarships: () =>
     apiClient.get<ScholarshipDto[]>('/scholarships'),
   getScholarship: (id: number) =>

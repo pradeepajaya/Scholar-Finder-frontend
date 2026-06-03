@@ -45,11 +45,7 @@ public class StudentProfileService {
         StudentProfile saved = studentProfileRepository.save(profile);
         log.info("Student profile saved for userId: {}", saved.getUserId());
 
-        return StudentProfileResponse.builder()
-            .userId(saved.getUserId())
-            .fullName(saved.getFullName())
-            .profileCompletionPercentage(saved.getProfileCompletionPercentage())
-            .build();
+        return mapProfileToResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -57,9 +53,68 @@ public class StudentProfileService {
         StudentProfile profile = studentProfileRepository.findByUserId(userId)
             .orElseThrow(() -> new IllegalArgumentException("Student profile not found"));
 
+        return mapProfileToResponse(profile);
+    }
+
+    private StudentProfileResponse mapProfileToResponse(StudentProfile profile) {
         return StudentProfileResponse.builder()
             .userId(profile.getUserId())
             .fullName(profile.getFullName())
+            .email(profile.getEmail())
+            .dateOfBirth(profile.getDateOfBirth())
+            .age(profile.getAge())
+            .gender(profile.getGender())
+            .nationality(profile.getNationality())
+            .nicPassport(profile.getNicPassport())
+            .district(profile.getDistrict())
+            .province(profile.getProvince())
+            .city(profile.getCity())
+            .mobile(profile.getMobile())
+            .preferredLanguage(profile.getPreferredLanguage())
+            .highestEducation(profile.getHighestEducation())
+            .currentStatus(profile.getCurrentStatus())
+            .intendedLevel(profile.getIntendedLevel())
+            .intendedYear(profile.getIntendedYear())
+            .preferredMode(profile.getPreferredMode())
+            .preferredLocation(profile.getPreferredLocation())
+            .olYear(profile.getOlYear())
+            .olType(profile.getOlType())
+            .olMedium(profile.getOlMedium())
+            .olPassed(profile.getOlPassed())
+            .olACount(profile.getOlACount())
+            .olBCount(profile.getOlBCount())
+            .olCCount(profile.getOlCCount())
+            .mathsGrade(profile.getMathsGrade())
+            .scienceGrade(profile.getScienceGrade())
+            .englishGrade(profile.getEnglishGrade())
+            .alYear(profile.getAlYear())
+            .alStream(profile.getAlStream())
+            .alMedium(profile.getAlMedium())
+            .subject1(profile.getSubject1())
+            .grade1(profile.getGrade1())
+            .subject2(profile.getSubject2())
+            .grade2(profile.getGrade2())
+            .subject3(profile.getSubject3())
+            .grade3(profile.getGrade3())
+            .zScore(profile.getZScore())
+            .calculatedGpa(profile.getCalculatedGpa())
+            .englishTest(profile.getEnglishTest())
+            .overallScore(profile.getOverallScore())
+            .examYear(profile.getExamYear())
+            .householdIncome(profile.getHouseholdIncome())
+            .dependents(profile.getDependents())
+            .employmentStatus(profile.getEmploymentStatus())
+            .governmentAssistance(profile.getGovernmentAssistance())
+            .background(profile.getBackground())
+            .disability(profile.getDisability())
+            .sports(profile.getSports())
+            .leadership(profile.getLeadership())
+            .firstGeneration(profile.getFirstGeneration())
+            .preferredCountries(profile.getPreferredCountries())
+            .preferredFields(profile.getPreferredFields())
+            .scholarshipType(profile.getScholarshipType())
+            .willingToReturn(profile.getWillingToReturn())
+            .profilePictureUrl(profile.getProfilePictureUrl())
             .profileCompletionPercentage(profile.getProfileCompletionPercentage())
             .build();
     }
@@ -67,6 +122,7 @@ public class StudentProfileService {
     private void mapRequestToProfile(StudentProfileRequest request, StudentProfile profile, Long userId) {
         profile.setUserId(userId);
         profile.setFullName(request.getFullName().trim());
+        profile.setEmail(request.getEmail());
         profile.setDateOfBirth(request.getDateOfBirth());
         profile.setGender(request.getGender());
         profile.setNationality(request.getNationality());

@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS users.student_profiles (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL UNIQUE,
     full_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
     date_of_birth DATE,
     gender VARCHAR(20),
     nationality VARCHAR(100) DEFAULT 'Sri Lankan',
@@ -231,6 +232,7 @@ CREATE TABLE IF NOT EXISTS scholarships.scholarships (
 
 -- Keep existing local databases aligned when new scholarship detail fields are added.
 ALTER TABLE scholarships.scholarships ADD COLUMN IF NOT EXISTS provider_name VARCHAR(255);
+ALTER TABLE users.student_profiles ADD COLUMN IF NOT EXISTS email VARCHAR(255);
 ALTER TABLE scholarships.scholarships ADD COLUMN IF NOT EXISTS min_al_passes INTEGER;
 ALTER TABLE scholarships.scholarships ADD COLUMN IF NOT EXISTS required_al_stream VARCHAR(100);
 ALTER TABLE scholarships.scholarships ADD COLUMN IF NOT EXISTS min_z_score DECIMAL(4,3);

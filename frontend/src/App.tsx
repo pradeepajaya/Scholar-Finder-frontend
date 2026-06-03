@@ -17,7 +17,7 @@ import { InstitutionLogin } from "./components/InstitutionLogin";
 import { AdminLogin } from "./components/AdminLogin";
 import { InstitutionDashboard } from "./components/InstitutionDashboard";
 import { Toaster } from "sonner";
-import { STUDENT_ID_KEY } from "./services/api";
+import { STUDENT_ID_KEY, tokenService } from "./services/api";
 
 type Page =
   | "home"
@@ -38,24 +38,35 @@ type Page =
 type UserType = "student" | "institution" | "admin";
 
 export default function App() {
+  const hasStoredAuth = tokenService.isAuthenticated();
+  const storedUser = hasStoredAuth ? tokenService.getUser() : null;
   const [currentPage, setCurrentPage] = useState<Page>("home");
   const [isRegistered, setIsRegistered] = useState(
-    () => !!localStorage.getItem(STUDENT_ID_KEY),
+    () =>
+      !!localStorage.getItem(STUDENT_ID_KEY) || storedUser?.role === "STUDENT",
   );
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userType, setUserType] = useState<UserType | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(() =>
+    hasStoredAuth,
+  );
+  const [userType, setUserType] = useState<UserType | null>(() => {
+    if (storedUser?.role === "STUDENT") return "student";
+    if (storedUser?.role === "INSTITUTION") return "institution";
+    if (storedUser?.role === "ADMIN") return "admin";
+    return null;
+  });
 
   const handleLogout = () => {
     setIsLoggedIn(false);
     setUserType(null);
     setIsRegistered(false);
     setCurrentPage("home");
-    localStorage.removeItem(STUDENT_ID_KEY);
+    tokenService.clearTokens();
   };
 
   const handleStudentRegistration = (data: any) => {
     setIsRegistered(true);
-    setCurrentPage("matches");
+    setUserType("student");
+    setCurrentPage("profile");
   };
 
   const handleLogin = (type: UserType) => {

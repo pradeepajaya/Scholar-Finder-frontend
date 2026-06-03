@@ -52,7 +52,8 @@ public class ScholarshipService {
             MatchResult matchResult = matchingService.calculateMatch(student, scholarship);
             
             // Filter by minimum match percentage
-            if (matchResult.getMatchPercentage().intValue() >= request.getMinimumMatchPercentage()) {
+            if (matchResult.isEligible()
+                    && matchResult.getMatchPercentage().intValue() >= request.getMinimumMatchPercentage()) {
                 ScholarshipMatchDto dto = mapToMatchDto(scholarship, matchResult);
                 matchedScholarships.add(dto);
 

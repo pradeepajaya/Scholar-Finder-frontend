@@ -112,6 +112,27 @@ public class ScholarshipController {
     }
 
     /**
+     * Get all applications submitted by a student.
+     *
+     * GET /api/scholarships/students/{studentId}/applications
+     */
+    @GetMapping("/students/{studentId}/applications")
+    public ResponseEntity<ApiResponse<List<StudentApplicationDto>>> getStudentApplications(
+            @PathVariable Long studentId) {
+
+        log.info("Getting applications for student {}", studentId);
+
+        try {
+            List<StudentApplicationDto> applications = applicationService.getApplicationsByStudentId(studentId);
+            return ResponseEntity.ok(ApiResponse.success(applications, "Applications retrieved successfully"));
+        } catch (Exception e) {
+            log.error("Error getting student applications: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to retrieve applications: " + e.getMessage()));
+        }
+    }
+
+    /**
      * Get all applications for an institution.
      *
      * GET /api/scholarships/institutions/{institutionId}/applications

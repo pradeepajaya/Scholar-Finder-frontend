@@ -21,6 +21,7 @@ public class StudentProfileRequest {
     private Long userId;
 
     private String fullName;
+    private String email;
 
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate dateOfBirth;

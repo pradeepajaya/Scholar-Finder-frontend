@@ -725,12 +725,16 @@ export function ScholarshipMatching({
           matches tailored to your goals.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Button className="bg-white text-blue-600 hover:bg-blue-50">
+          <Button
+            className="bg-white text-blue-600 hover:bg-blue-50"
+            onClick={() => onNavigate("student-register")}
+          >
             Update Profile
           </Button>
           <Button
             variant="outline"
             className="border-white text-[rgb(15,15,15)] hover:bg-white/10"
+            onClick={() => onNavigate("scholarships")}
           >
             Browse All Scholarships
           </Button>

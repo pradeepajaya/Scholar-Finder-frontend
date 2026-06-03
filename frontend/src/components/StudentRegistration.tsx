@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -38,6 +38,9 @@ import {
   scholarshipApi,
   STUDENT_ID_KEY,
   StudentProfileRequest,
+  studentProfileCache,
+  type StudentProfileResponse,
+  tokenService,
 } from "@/services/api";
 
 interface FormData {
@@ -135,6 +138,34 @@ const steps = [
   },
 ];
 
+const sriLankanDistricts = [
+  "Ampara",
+  "Anuradhapura",
+  "Badulla",
+  "Batticaloa",
+  "Colombo",
+  "Galle",
+  "Gampaha",
+  "Hambantota",
+  "Jaffna",
+  "Kalutara",
+  "Kandy",
+  "Kegalle",
+  "Kilinochchi",
+  "Kurunegala",
+  "Mannar",
+  "Matale",
+  "Matara",
+  "Monaragala",
+  "Mullaitivu",
+  "Nuwara Eliya",
+  "Polonnaruwa",
+  "Puttalam",
+  "Ratnapura",
+  "Trincomalee",
+  "Vavuniya",
+];
+
 export function StudentRegistration({
   onComplete,
 }: {
@@ -152,7 +183,7 @@ export function StudentRegistration({
     district: "",
     province: "",
     city: "",
-    email: "",
+    email: getAuthenticatedStudentUser()?.email || "",
     mobile: "",
     preferredLanguage: "English",
     highestEducation: "",
@@ -200,6 +231,127 @@ export function StudentRegistration({
   });
 
   const [savedProgress, setSavedProgress] = useState(false);
+
+  const toFormText = (value?: string | number | null) =>
+    value === undefined || value === null ? "" : String(value);
+
+  const denormalizeEducationLevel = (value?: string | null) => {
+    if (!value) return "";
+    const normalized = value.toUpperCase();
+    if (normalized === "UNDERGRADUATE") return "Bachelor's";
+    if (normalized === "POSTGRADUATE") return "Master's";
+    if (normalized === "PHD") return "PhD";
+    return value;
+  };
+
+  const denormalizeScholarshipType = (value?: string | null) => {
+    const labels: Record<string, string> = {
+      FULL: "Fully Funded",
+      PARTIAL: "Partial",
+      TUITION: "Tuition Only",
+      LIVING_EXPENSES: "Living Allowance",
+    };
+    return value ? labels[value] || value : "";
+  };
+
+  const mapProfileResponseToFormData = (
+    profile: StudentProfileResponse,
+    fallbackEmail?: string,
+  ): FormData => ({
+    fullName: toFormText(profile.fullName),
+    dateOfBirth: toFormText(profile.dateOfBirth),
+    gender: toFormText(profile.gender),
+    nationality: toFormText(profile.nationality) || "Sri Lankan",
+    nicPassport: toFormText(profile.nicPassport),
+    district: toFormText(profile.district),
+    province: toFormText(profile.province),
+    city: toFormText(profile.city),
+    email: toFormText(profile.email) || fallbackEmail || "",
+    mobile: toFormText(profile.mobile),
+    preferredLanguage: toFormText(profile.preferredLanguage) || "English",
+    highestEducation: toFormText(profile.highestEducation),
+    currentStatus: toFormText(profile.currentStatus),
+    intendedLevel: denormalizeEducationLevel(profile.intendedLevel),
+    intendedYear: toFormText(profile.intendedYear),
+    preferredMode: toFormText(profile.preferredMode),
+    preferredLocation: toFormText(profile.preferredLocation),
+    olYear: toFormText(profile.olYear),
+    olType: toFormText(profile.olType),
+    olMedium: toFormText(profile.olMedium),
+    olPassed: toFormText(profile.olPassed),
+    olA: toFormText(profile.olACount),
+    olB: toFormText(profile.olBCount),
+    olC: toFormText(profile.olCCount),
+    mathsGrade: toFormText(profile.mathsGrade),
+    scienceGrade: toFormText(profile.scienceGrade),
+    englishGrade: toFormText(profile.englishGrade),
+    alYear: toFormText(profile.alYear),
+    alStream: toFormText(profile.alStream),
+    alMedium: toFormText(profile.alMedium),
+    subject1: toFormText(profile.subject1),
+    grade1: toFormText(profile.grade1),
+    subject2: toFormText(profile.subject2),
+    grade2: toFormText(profile.grade2),
+    subject3: toFormText(profile.subject3),
+    grade3: toFormText(profile.grade3),
+    zScore: toFormText(profile.zScore),
+    englishTest: toFormText(profile.englishTest),
+    overallScore: toFormText(profile.overallScore),
+    examYear: toFormText(profile.examYear),
+    householdIncome: toFormText(profile.householdIncome),
+    dependents: toFormText(profile.dependents),
+    employmentStatus: toFormText(profile.employmentStatus),
+    governmentAssistance: toFormText(profile.governmentAssistance),
+    background: toFormText(profile.background),
+    disability: toFormText(profile.disability) || "No",
+    sports: toFormText(profile.sports) || "No",
+    leadership: toFormText(profile.leadership) || "No",
+    firstGeneration: toFormText(profile.firstGeneration) || "No",
+    preferredCountries: profile.preferredCountries || [],
+    preferredFields: profile.preferredFields || [],
+    scholarshipType: denormalizeScholarshipType(profile.scholarshipType),
+    willingToReturn: toFormText(profile.willingToReturn),
+  });
+
+  useEffect(() => {
+    const currentUser = getAuthenticatedStudentUser();
+    const storedUserId = Number(localStorage.getItem(STUDENT_ID_KEY));
+    const studentUserId =
+      currentUser?.id ??
+      (Number.isFinite(storedUserId) && storedUserId > 0
+          ? storedUserId
+          : null);
+
+    if (currentUser) {
+      localStorage.setItem(STUDENT_ID_KEY, String(currentUser.id));
+    }
+
+    if (currentUser?.email) {
+      setFormData((prev) =>
+        prev.email ? prev : { ...prev, email: currentUser.email },
+      );
+    }
+
+    if (!studentUserId) return;
+
+    let isActive = true;
+    scholarshipApi
+      .getStudentProfile(studentUserId)
+      .then((response) => {
+        if (!isActive || !response.success || !response.data) return;
+        studentProfileCache.setProfile(response.data);
+        setFormData(
+          mapProfileResponseToFormData(response.data, currentUser?.email),
+        );
+      })
+      .catch(() => {
+        // New students will not have a profile until they complete this form.
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const toOptionalText = (value: string) =>
     value && value.trim().length > 0 ? value.trim() : undefined;
@@ -264,11 +416,14 @@ export function StudentRegistration({
 
   const buildProfileRequest = (data: FormData): StudentProfileRequest => {
     const storedUserId = localStorage.getItem(STUDENT_ID_KEY);
+    const currentUser = getAuthenticatedStudentUser();
+    const studentUserId = currentUser?.id;
     const englishTest = normalizeEnglishTest(data.englishTest);
 
     return {
-      userId: storedUserId ? Number(storedUserId) : undefined,
+      userId: studentUserId ?? (storedUserId ? Number(storedUserId) : undefined),
       fullName: data.fullName.trim(),
+      email: toOptionalText(data.email),
       dateOfBirth: toOptionalText(data.dateOfBirth),
       gender: toOptionalText(data.gender),
       nationality: toOptionalText(data.nationality),
@@ -333,6 +488,13 @@ export function StudentRegistration({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const updateNicPassport = (value: string) => {
+    updateFormData(
+      "nicPassport",
+      value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20),
+    );
+  };
+
   const calculateAge = (dob: string) => {
     if (!dob) return "";
     const birthDate = new Date(dob);
@@ -364,7 +526,7 @@ export function StudentRegistration({
       const response = await scholarshipApi.upsertStudentProfile(payload);
 
       if (response.success && response.data) {
-        localStorage.setItem(STUDENT_ID_KEY, String(response.data.userId));
+        studentProfileCache.setProfile(response.data);
         onComplete(formData);
       } else {
         throw new Error(response.message || "Failed to save student profile");
@@ -395,6 +557,8 @@ export function StudentRegistration({
         return (
           formData.fullName &&
           formData.dateOfBirth &&
+          formData.nicPassport &&
+          formData.district &&
           formData.email &&
           formData.mobile
         );
@@ -671,12 +835,16 @@ export function StudentRegistration({
                     <Input
                       id="nicPassport"
                       value={formData.nicPassport}
-                      onChange={(e) =>
-                        updateFormData("nicPassport", e.target.value)
-                      }
-                      placeholder="e.g., 199912345678 or N1234567"
+                      onChange={(e) => updateNicPassport(e.target.value)}
+                      placeholder="e.g., 123456789V or N1234567"
                       className="mt-1.5"
+                      inputMode="text"
+                      maxLength={20}
+                      pattern="[A-Za-z0-9]*"
                     />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Use letters and numbers only, up to 20 characters.
+                    </p>
                   </div>
 
                   <div>
@@ -693,19 +861,11 @@ export function StudentRegistration({
                         <SelectValue placeholder="Select district" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Colombo">Colombo</SelectItem>
-                        <SelectItem value="Gampaha">Gampaha</SelectItem>
-                        <SelectItem value="Kalutara">Kalutara</SelectItem>
-                        <SelectItem value="Kandy">Kandy</SelectItem>
-                        <SelectItem value="Matale">Matale</SelectItem>
-                        <SelectItem value="Nuwara Eliya">
-                          Nuwara Eliya
-                        </SelectItem>
-                        <SelectItem value="Galle">Galle</SelectItem>
-                        <SelectItem value="Matara">Matara</SelectItem>
-                        <SelectItem value="Hambantota">Hambantota</SelectItem>
-                        <SelectItem value="Jaffna">Jaffna</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
+                        {sriLankanDistricts.map((district) => (
+                          <SelectItem key={district} value={district}>
+                            {district}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1963,4 +2123,12 @@ export function StudentRegistration({
       </div>
     </div>
   );
+}
+
+function getAuthenticatedStudentUser() {
+  const currentUser = tokenService.isAuthenticated()
+    ? tokenService.getUser()
+    : null;
+
+  return currentUser?.role === "STUDENT" ? currentUser : null;
 }

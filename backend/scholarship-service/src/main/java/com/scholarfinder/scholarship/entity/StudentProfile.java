@@ -32,6 +32,8 @@ public class StudentProfile {
     @Column(name = "full_name", nullable = false)
     private String fullName;
 
+    private String email;
+
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
 

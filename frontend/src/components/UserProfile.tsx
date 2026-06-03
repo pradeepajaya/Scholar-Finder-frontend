@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type FormEvent } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -7,7 +7,6 @@ import { Label } from "./ui/label";
 import { Progress } from "./ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { Textarea } from "./ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -35,7 +34,6 @@ import {
   Upload,
   Trash2,
   Loader2,
-  Send,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import {
@@ -54,7 +52,14 @@ import {
   ScholarshipApplicationDialog,
   mapBackendScholarship,
 } from "./ScholarshipsPage";
-import { scholarshipApi, STUDENT_ID_KEY, tokenService } from "@/services/api";
+import {
+  scholarshipApi,
+  STUDENT_ID_KEY,
+  studentProfileCache,
+  tokenService,
+  type StudentApplicationResponse,
+  type StudentProfileResponse,
+} from "@/services/api";
 
 interface ProfileData {
   name: string;
@@ -69,11 +74,43 @@ interface UserProfileProps {
   onNavigate?: (page: string) => void;
 }
 
+type AppliedScholarshipStatus =
+  | "submitted"
+  | "under-review"
+  | "shortlisted"
+  | "accepted"
+  | "rejected";
+
+interface AppliedScholarship {
+  id: number;
+  name: string;
+  provider: string;
+  appliedDate: string;
+  lastUpdated: string;
+  status: AppliedScholarshipStatus;
+  referenceCode: string;
+  nextUpdate: string;
+  requiredAction: string;
+  documents: string[];
+}
+
 export function UserProfile({ onNavigate }: UserProfileProps) {
+  const cachedStudentProfile = getCachedStudentProfileForActiveStudent();
   const [documents, setDocuments] = useState<StudentDocument[]>(
     getStoredStudentDocuments,
   );
   const [activeTab, setActiveTab] = useState("overview");
+  const [studentProfile, setStudentProfile] =
+    useState<StudentProfileResponse | null>(cachedStudentProfile);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [profile, setProfile] = useState<ProfileData>(() =>
+    mapStudentProfileToProfileData(cachedStudentProfile),
+  );
+  const [editForm, setEditForm] = useState<ProfileData>(() =>
+    mapStudentProfileToProfileData(cachedStudentProfile),
+  );
   const [matchCount, setMatchCount] = useState<number | null>(null);
   const [isMatchCountLoading, setIsMatchCountLoading] = useState(false);
   const [matchCountError, setMatchCountError] = useState("");
@@ -89,36 +126,92 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
   const [applicationScholarship, setApplicationScholarship] =
     useState<BrowseScholarship | null>(null);
   const [isApplicationOpen, setIsApplicationOpen] = useState(false);
+  const [trackedApplication, setTrackedApplication] =
+    useState<AppliedScholarship | null>(null);
+  const [appliedScholarships, setAppliedScholarships] = useState<
+    AppliedScholarship[]
+  >([]);
+  const [isApplicationsLoading, setIsApplicationsLoading] = useState(false);
+  const [applicationsError, setApplicationsError] = useState("");
 
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadedCount = documents.filter((d) => d.status === "uploaded").length;
   const totalDocs = documents.length;
-  // Profile completion: personal info (25%) + academics (25%) + english (25%) + documents (25% scaled by upload ratio)
-  const profileCompletion = Math.round(75 + (uploadedCount / totalDocs) * 25);
+  const documentCompletion =
+    totalDocs > 0 ? Math.round((uploadedCount / totalDocs) * 25) : 0;
+  const backendProfileCompletion =
+    studentProfile?.profileCompletionPercentage ?? 0;
+  const profileCompletion = Math.min(
+    100,
+    Math.round(backendProfileCompletion * 0.75 + documentCompletion),
+  );
   const allDocsUploaded = uploadedCount === totalDocs;
 
   useEffect(() => {
-    const storedStudentId = localStorage.getItem(STUDENT_ID_KEY);
-    const currentUser = tokenService.getUser();
-    const studentUserId = storedStudentId
-      ? Number(storedStudentId)
-      : currentUser?.role === "STUDENT"
-        ? currentUser.id
-        : null;
+    const studentUserId = resolveStudentUserId();
+    const cachedProfile = studentProfileCache.getProfile(studentUserId);
+
+    if (cachedProfile) {
+      const nextProfile = mapStudentProfileToProfileData(cachedProfile);
+      setStudentProfile(cachedProfile);
+      setProfile(nextProfile);
+      setEditForm(nextProfile);
+      setProfileError("");
+    }
 
     if (!studentUserId) {
+      if (!cachedProfile) {
+        setProfileError("Complete student registration to load your profile.");
+      }
       return;
     }
 
-    if (!storedStudentId) {
-      localStorage.setItem(STUDENT_ID_KEY, String(studentUserId));
-    }
-
     let isActive = true;
+    setIsProfileLoading(true);
+    setProfileError("");
     setIsMatchCountLoading(true);
     setMatchCountError("");
+    setIsApplicationsLoading(true);
+    setApplicationsError("");
+
+    scholarshipApi
+      .getStudentProfile(studentUserId)
+      .then((response) => {
+        if (!isActive) return;
+
+        if (response.success && response.data) {
+          studentProfileCache.setProfile(response.data);
+          setStudentProfile(response.data);
+          const nextProfile = mapStudentProfileToProfileData(response.data);
+          setProfile(nextProfile);
+          setEditForm(nextProfile);
+          return;
+        }
+
+        throw new Error(response.message || "Failed to load profile");
+      })
+      .catch((err: any) => {
+        if (!isActive) return;
+        const fallbackProfile = studentProfileCache.getProfile(studentUserId);
+        if (fallbackProfile) {
+          const nextProfile = mapStudentProfileToProfileData(fallbackProfile);
+          setStudentProfile(fallbackProfile);
+          setProfile(nextProfile);
+          setEditForm(nextProfile);
+          setProfileError("");
+          return;
+        }
+
+        setStudentProfile(null);
+        setProfileError(err?.message || "Could not load your profile");
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsProfileLoading(false);
+        }
+      });
 
     scholarshipApi
       .getMatches({
@@ -145,6 +238,31 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
       .finally(() => {
         if (isActive) {
           setIsMatchCountLoading(false);
+        }
+      });
+
+    scholarshipApi
+      .getStudentApplications(studentUserId)
+      .then((response) => {
+        if (!isActive) return;
+
+        if (response.success && response.data) {
+          setAppliedScholarships(
+            response.data.map(mapStudentApplicationToAppliedScholarship),
+          );
+          return;
+        }
+
+        throw new Error(response.message || "Failed to load applications");
+      })
+      .catch((err: any) => {
+        if (!isActive) return;
+        setAppliedScholarships([]);
+        setApplicationsError(err?.message || "Could not load applications");
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsApplicationsLoading(false);
         }
       });
 
@@ -229,21 +347,8 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
     setActiveTab("documents");
   };
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState<ProfileData>({
-    name: "Saman Perera",
-    email: "saman.perera@email.com",
-    phone: "+94 77 123 4567",
-    location: "Colombo, Sri Lanka",
-    stream: "A/L - Science Stream",
-    avatarUrl:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200",
-  });
-  const [editForm, setEditForm] = useState<ProfileData>({ ...profile });
-
   const handleEditClick = () => {
-    setEditForm({ ...profile });
-    setIsEditing(true);
+    onNavigate?.("student-register");
   };
 
   const handleCancelEdit = () => {
@@ -260,121 +365,6 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
     setSavedScholarships(removeSavedScholarship(scholarshipId));
   };
 
-  const getStudentIdForApplication = () => {
-    const storedId = Number(localStorage.getItem(STUDENT_ID_KEY));
-    if (Number.isFinite(storedId) && storedId > 0) {
-      return storedId;
-    }
-
-    const userId = tokenService.getUser()?.id;
-    return userId && userId > 0 ? userId : null;
-  };
-
-  const openSavedDetails = (scholarship: SavedScholarship) => {
-    setSelectedSavedScholarship(scholarship);
-    setIsSavedDetailsOpen(true);
-  };
-
-  const openSavedApplication = (scholarship: SavedScholarship) => {
-    const currentUser = tokenService.getUser();
-
-    setApplicationScholarship(scholarship);
-    setApplicationForm({
-      fullName: profile.name,
-      email: currentUser?.email || profile.email,
-      phone: profile.phone,
-      currentEducation: profile.stream,
-      intendedLevel: "",
-      fieldOfStudy: "",
-      qualificationSummary: "",
-      coverLetter: "",
-    });
-    setApplicationError("");
-    setApplicationSuccess("");
-    setIsApplicationOpen(true);
-    setIsSavedDetailsOpen(false);
-  };
-
-  const updateApplicationField = (
-    field: keyof SavedApplicationForm,
-    value: string,
-  ) => {
-    setApplicationForm((current) => ({ ...current, [field]: value }));
-  };
-
-  const handleSavedApplicationSubmit = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-    if (!applicationScholarship) return;
-
-    const studentId = getStudentIdForApplication();
-
-    setApplicationError("");
-    setApplicationSuccess("");
-
-    if (!studentId) {
-      setApplicationError(
-        "Please log in or complete student registration before submitting an application.",
-      );
-      return;
-    }
-
-    if (
-      !applicationForm.fullName.trim() ||
-      !applicationForm.email.trim() ||
-      !applicationForm.qualificationSummary.trim()
-    ) {
-      setApplicationError(
-        "Please complete your name, email, and qualification summary.",
-      );
-      return;
-    }
-
-    setIsSubmittingApplication(true);
-    try {
-      const response = await scholarshipApi.submitApplication(
-        applicationScholarship.id,
-        {
-          studentId,
-          scholarshipId: applicationScholarship.id,
-          ...applicationForm,
-          requiredDocuments: [],
-          documents: [],
-        },
-      );
-
-      setApplicationSuccess(
-        response.data.updatedExistingApplication
-          ? "Your existing application was updated successfully."
-          : "Your application was submitted successfully.",
-      );
-    } catch (error) {
-      setApplicationError(
-        error instanceof Error
-          ? error.message
-          : "Could not submit the application. Please try again.",
-      );
-    } finally {
-      setIsSubmittingApplication(false);
-    }
-  };
-
-  const appliedScholarships = [
-    {
-      id: 1,
-      name: "Fulbright Scholarship",
-      appliedDate: "2026-01-10",
-      status: "under-review",
-    },
-    {
-      id: 2,
-      name: "DAAD Master's Scholarship",
-      appliedDate: "2026-01-05",
-      status: "submitted",
-    },
-  ];
-
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-8">
@@ -388,7 +378,19 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
         {/* Profile Sidebar */}
         <div className="space-y-6">
           <Card className="p-6">
-            {isEditing ? (
+            {isProfileLoading ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <Loader2 className="mb-3 h-6 w-6 animate-spin text-blue-600" />
+                <p className="font-medium text-slate-900">Loading profile</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Fetching your saved registration details.
+                </p>
+              </div>
+            ) : profileError ? (
+              <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
+                {profileError}
+              </div>
+            ) : isEditing ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold text-slate-900">Edit Profile</h3>
@@ -398,7 +400,9 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                 </div>
                 <div className="text-center mb-4">
                   <Avatar className="w-24 h-24 mx-auto mb-2">
-                    <AvatarImage src={editForm.avatarUrl} />
+                    {editForm.avatarUrl && (
+                      <AvatarImage src={editForm.avatarUrl} />
+                    )}
                     <AvatarFallback>
                       {editForm.name
                         .split(" ")
@@ -508,7 +512,7 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
               <div>
                 <div className="text-center mb-4">
                   <Avatar className="w-24 h-24 mx-auto mb-4">
-                    <AvatarImage src={profile.avatarUrl} />
+                    {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} />}
                     <AvatarFallback>
                       {profile.name
                         .split(" ")
@@ -527,7 +531,7 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                     onClick={handleEditClick}
                   >
                     <Edit className="w-4 h-4 mr-2" />
-                    Edit Profile
+                    Edit Registration
                   </Button>
                 </div>
 
@@ -654,48 +658,181 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                 <h3 className="text-xl font-semibold text-slate-900 mb-4">
                   Academic Profile
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-slate-500 mb-1">
-                      Current Status
-                    </p>
-                    <p className="font-medium text-slate-900">A/L Student</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500 mb-1">
-                      Intended Level
-                    </p>
-                    <p className="font-medium text-slate-900">
-                      Bachelor's Degree
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500 mb-1">Stream</p>
-                    <p className="font-medium text-slate-900">Science</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500 mb-1">Z-Score</p>
-                    <p className="font-medium text-slate-900">1.8523</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500 mb-1">A/L Subjects</p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      <Badge variant="secondary">Physics (A)</Badge>
-                      <Badge variant="secondary">Chemistry (A)</Badge>
-                      <Badge variant="secondary">Biology (B)</Badge>
+                <div className="space-y-6">
+                  <section>
+                    <h4 className="mb-3 text-sm font-semibold uppercase text-slate-500">
+                      Study Goals
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <ProfileField
+                        label="Highest Education"
+                        value={studentProfile?.highestEducation}
+                      />
+                      <ProfileField
+                        label="Current Status"
+                        value={studentProfile?.currentStatus}
+                      />
+                      <ProfileField
+                        label="Intended Level"
+                        value={formatEducationLevel(
+                          studentProfile?.intendedLevel,
+                        )}
+                      />
+                      <ProfileField
+                        label="Intended Year"
+                        value={studentProfile?.intendedYear}
+                      />
+                      <ProfileField
+                        label="Preferred Mode"
+                        value={studentProfile?.preferredMode}
+                      />
+                      <ProfileField
+                        label="Preferred Location"
+                        value={studentProfile?.preferredLocation}
+                      />
                     </div>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500 mb-1">
-                      English Proficiency
-                    </p>
-                    <p className="font-medium text-slate-900">IELTS 7.5</p>
-                  </div>
+                  </section>
+
+                  <section>
+                    <h4 className="mb-3 text-sm font-semibold uppercase text-slate-500">
+                      Ordinary Level
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <ProfileField label="Exam Year" value={studentProfile?.olYear} />
+                      <ProfileField label="Exam Type" value={studentProfile?.olType} />
+                      <ProfileField label="Medium" value={studentProfile?.olMedium} />
+                      <ProfileField label="Passed Subjects" value={studentProfile?.olPassed} />
+                      <ProfileField label="A Count" value={studentProfile?.olACount} />
+                      <ProfileField label="B Count" value={studentProfile?.olBCount} />
+                      <ProfileField label="C Count" value={studentProfile?.olCCount} />
+                      <ProfileField label="Maths Grade" value={studentProfile?.mathsGrade} />
+                      <ProfileField label="Science Grade" value={studentProfile?.scienceGrade} />
+                      <ProfileField label="English Grade" value={studentProfile?.englishGrade} />
+                    </div>
+                  </section>
+
+                  <section>
+                    <h4 className="mb-3 text-sm font-semibold uppercase text-slate-500">
+                      Advanced Level
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <ProfileField label="Exam Year" value={studentProfile?.alYear} />
+                      <ProfileField label="Stream" value={studentProfile?.alStream} />
+                      <ProfileField label="Medium" value={studentProfile?.alMedium} />
+                      <ProfileField label="Z-Score" value={studentProfile?.zScore} />
+                      <ProfileField
+                        label="Calculated GPA"
+                        value={studentProfile?.calculatedGpa}
+                      />
+                      <ProfileField label="Subject 1" value={studentProfile?.subject1} />
+                      <ProfileField label="Grade 1" value={studentProfile?.grade1} />
+                      <ProfileField label="Subject 2" value={studentProfile?.subject2} />
+                      <ProfileField label="Grade 2" value={studentProfile?.grade2} />
+                      <ProfileField label="Subject 3" value={studentProfile?.subject3} />
+                      <ProfileField label="Grade 3" value={studentProfile?.grade3} />
+                    </div>
+                  </section>
+
+                  <section>
+                    <h4 className="mb-3 text-sm font-semibold uppercase text-slate-500">
+                      English
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <ProfileField label="English Test" value={studentProfile?.englishTest} />
+                      <ProfileField label="Overall Score" value={studentProfile?.overallScore} />
+                      <ProfileField label="Exam Year" value={studentProfile?.examYear} />
+                    </div>
+                  </section>
                 </div>
-                <Button variant="outline" className="mt-4">
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => onNavigate?.("student-register")}
+                >
                   <Edit className="w-4 h-4 mr-2" />
                   Edit Academic Info
                 </Button>
+              </Card>
+
+              <Card className="p-6">
+                <h3 className="text-xl font-semibold text-slate-900 mb-4">
+                  Personal Details
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <ProfileField label="Full Name" value={studentProfile?.fullName} />
+                  <ProfileField
+                    label="Email"
+                    value={studentProfile?.email || profile.email}
+                  />
+                  <ProfileField
+                    label="NIC / Passport"
+                    value={studentProfile?.nicPassport}
+                  />
+                  <ProfileField
+                    label="Date of Birth"
+                    value={formatSavedDate(studentProfile?.dateOfBirth)}
+                  />
+                  <ProfileField label="Age" value={studentProfile?.age} />
+                  <ProfileField label="Gender" value={studentProfile?.gender} />
+                  <ProfileField
+                    label="Nationality"
+                    value={studentProfile?.nationality}
+                  />
+                  <ProfileField label="District" value={studentProfile?.district} />
+                  <ProfileField label="Province" value={studentProfile?.province} />
+                  <ProfileField label="City" value={studentProfile?.city} />
+                  <ProfileField label="Mobile" value={studentProfile?.mobile} />
+                  <ProfileField
+                    label="Preferred Language"
+                    value={studentProfile?.preferredLanguage}
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => onNavigate?.("student-register")}
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit Personal Details
+                </Button>
+              </Card>
+
+              <Card className="p-6">
+                <h3 className="text-xl font-semibold text-slate-900 mb-4">
+                  Financial & Background
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <ProfileField
+                    label="Monthly Household Income"
+                    value={studentProfile?.householdIncome}
+                  />
+                  <ProfileField
+                    label="Family Dependents"
+                    value={studentProfile?.dependents}
+                  />
+                  <ProfileField
+                    label="Employment Status"
+                    value={studentProfile?.employmentStatus}
+                  />
+                  <ProfileField
+                    label="Government Assistance"
+                    value={studentProfile?.governmentAssistance}
+                  />
+                  <ProfileField label="Background" value={studentProfile?.background} />
+                  <ProfileField label="Disability" value={studentProfile?.disability} />
+                  <ProfileField
+                    label="Sports Achievements"
+                    value={studentProfile?.sports}
+                  />
+                  <ProfileField
+                    label="Leadership Experience"
+                    value={studentProfile?.leadership}
+                  />
+                  <ProfileField
+                    label="First-Generation University Student"
+                    value={studentProfile?.firstGeneration}
+                  />
+                </div>
               </Card>
 
               <Card className="p-6">
@@ -708,10 +845,15 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                       Preferred Countries
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <Badge>USA</Badge>
-                      <Badge>UK</Badge>
-                      <Badge>Australia</Badge>
-                      <Badge>Canada</Badge>
+                      {studentProfile?.preferredCountries?.length ? (
+                        studentProfile.preferredCountries.map((country) => (
+                          <Badge key={country}>{country}</Badge>
+                        ))
+                      ) : (
+                        <span className="text-sm text-slate-500">
+                          Not specified
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -719,19 +861,35 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                       Fields of Interest
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <Badge>Engineering</Badge>
-                      <Badge>Computer Science</Badge>
-                      <Badge>Medicine</Badge>
+                      {studentProfile?.preferredFields?.length ? (
+                        studentProfile.preferredFields.map((field) => (
+                          <Badge key={field}>{field}</Badge>
+                        ))
+                      ) : (
+                        <span className="text-sm text-slate-500">
+                          Not specified
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500 mb-2">
                       Scholarship Type
                     </p>
-                    <Badge>Fully Funded</Badge>
+                    <Badge>
+                      {formatScholarshipType(studentProfile?.scholarshipType)}
+                    </Badge>
                   </div>
+                  <ProfileField
+                    label="Willing to Return to Sri Lanka"
+                    value={studentProfile?.willingToReturn}
+                  />
                 </div>
-                <Button variant="outline" className="mt-4">
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => onNavigate?.("student-register")}
+                >
                   <Edit className="w-4 h-4 mr-2" />
                   Edit Preferences
                 </Button>
@@ -941,40 +1099,69 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                 <h3 className="text-xl font-semibold text-slate-900 mb-4">
                   Applied Scholarships ({appliedScholarships.length})
                 </h3>
-                <div className="space-y-4">
-                  {appliedScholarships.map((scholarship) => (
-                    <div
-                      key={scholarship.id}
-                      className="p-4 border border-slate-200 rounded-lg"
+                {isApplicationsLoading ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 p-4 text-sm text-slate-600">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                    Loading your submitted applications...
+                  </div>
+                ) : applicationsError ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    {applicationsError}
+                  </div>
+                ) : appliedScholarships.length === 0 ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+                    <p className="font-medium text-slate-900">
+                      No applications submitted yet
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Scholarships you apply for will appear here.
+                    </p>
+                    <Button
+                      className="mt-4 bg-blue-600 text-white hover:bg-blue-700"
+                      size="sm"
+                      onClick={() => onNavigate?.("scholarships")}
                     >
-                      <div className="flex items-start justify-between mb-2">
-                        <h4 className="font-semibold text-slate-900">
-                          {scholarship.name}
-                        </h4>
-                        <Badge
-                          className={
-                            scholarship.status === "under-review"
-                              ? "bg-orange-100 text-orange-700"
-                              : "bg-blue-100 text-blue-700"
-                          }
+                      Browse Scholarships
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {appliedScholarships.map((scholarship) => (
+                      <div
+                        key={scholarship.id}
+                        className="p-4 border border-slate-200 rounded-lg"
+                      >
+                        <div className="flex items-start justify-between gap-4 mb-2">
+                          <div>
+                            <h4 className="font-semibold text-slate-900">
+                              {scholarship.name}
+                            </h4>
+                            <p className="text-sm text-slate-600">
+                              {scholarship.provider}
+                            </p>
+                          </div>
+                          <Badge
+                            className={getApplicationStatusClass(
+                              scholarship.status,
+                            )}
+                          >
+                            {getApplicationStatusLabel(scholarship.status)}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-slate-600 mb-3">
+                          Applied on: {formatSavedDate(scholarship.appliedDate)}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setTrackedApplication(scholarship)}
                         >
-                          {scholarship.status === "under-review"
-                            ? "Under Review"
-                            : "Submitted"}
-                        </Badge>
+                          Track Application
+                        </Button>
                       </div>
-                      <p className="text-sm text-slate-600 mb-3">
-                        Applied on:{" "}
-                        {new Date(scholarship.appliedDate).toLocaleDateString(
-                          "en-GB",
-                        )}
-                      </p>
-                      <Button size="sm" variant="outline">
-                        Track Application
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </Card>
             </TabsContent>
 
@@ -1081,12 +1268,154 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
         isLoading={isDetailsLoading}
         error={detailsError}
         onApplyNow={openSavedApplication}
+        contentClassName="max-w-6xl"
       />
       <ScholarshipApplicationDialog
         scholarship={applicationScholarship}
         open={isApplicationOpen}
         onOpenChange={setIsApplicationOpen}
       />
+      <Dialog
+        open={trackedApplication !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTrackedApplication(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          {trackedApplication && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl leading-tight">
+                  {trackedApplication.name}
+                </DialogTitle>
+                <DialogDescription>
+                  {trackedApplication.provider} - Reference{" "}
+                  {trackedApplication.referenceCode}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-500">
+                      Current status
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-slate-900">
+                      {getApplicationStatusLabel(trackedApplication.status)}
+                    </p>
+                  </div>
+                  <Badge
+                    className={getApplicationStatusClass(
+                      trackedApplication.status,
+                    )}
+                  >
+                    {getApplicationStatusLabel(trackedApplication.status)}
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-xs font-semibold uppercase text-slate-500">
+                      Applied on
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {formatSavedDate(trackedApplication.appliedDate)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-xs font-semibold uppercase text-slate-500">
+                      Last updated
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {formatSavedDate(trackedApplication.lastUpdated)}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="mb-3 font-semibold text-slate-900">
+                    Application timeline
+                  </h3>
+                  <div className="space-y-3">
+                    {getApplicationTrackingSteps(trackedApplication).map(
+                      (step) => (
+                        <div key={step.title} className="flex gap-3">
+                          <div
+                            className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
+                              step.isRejected
+                                ? "bg-red-100 text-red-700"
+                                : step.isActive
+                                ? "bg-blue-100 text-blue-700"
+                                : step.isComplete
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-slate-100 text-slate-400"
+                            }`}
+                          >
+                            {step.isRejected ? (
+                              <XCircle className="h-4 w-4" />
+                            ) : step.isComplete ? (
+                              <CheckCircle2 className="h-4 w-4" />
+                            ) : (
+                              <Clock className="h-4 w-4" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1 border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
+                            <p className="font-medium text-slate-900">
+                              {step.title}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-600">
+                              {step.description}
+                            </p>
+                          </div>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <p className="text-sm font-semibold text-blue-950">
+                      Next update
+                    </p>
+                    <p className="mt-1 text-sm text-blue-900">
+                      {trackedApplication.nextUpdate}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                    <p className="text-sm font-semibold text-orange-950">
+                      Required action
+                    </p>
+                    <p className="mt-1 text-sm text-orange-900">
+                      {trackedApplication.requiredAction}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="mb-3 font-semibold text-slate-900">
+                    Submitted documents
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {trackedApplication.documents.map((document) => (
+                      <Badge
+                        key={document}
+                        variant="secondary"
+                        className="px-3 py-1"
+                      >
+                        <FileText className="mr-1.5 h-3.5 w-3.5" />
+                        {document}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1103,3 +1432,303 @@ function formatSavedDate(date?: string) {
   });
 }
 
+function ProfileField({
+  label,
+  value,
+}: {
+  label: string;
+  value?: ReactNode;
+}) {
+  const isEmpty = value === undefined || value === null || value === "";
+
+  return (
+    <div>
+      <p className="text-sm text-slate-500 mb-1">{label}</p>
+      <div className="font-medium text-slate-900">
+        {isEmpty ? "Not specified" : value}
+      </div>
+    </div>
+  );
+}
+
+function BadgeList({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return <span className="text-sm text-slate-500">Not specified</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {items.map((item) => (
+        <Badge key={item} variant="secondary">
+          {item}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function resolveStudentUserId() {
+  const currentUser = getAuthenticatedStudentUser();
+  if (currentUser) {
+    localStorage.setItem(STUDENT_ID_KEY, String(currentUser.id));
+    return currentUser.id;
+  }
+
+  const storedId = Number(localStorage.getItem(STUDENT_ID_KEY));
+  if (Number.isFinite(storedId) && storedId > 0) {
+    return storedId;
+  }
+
+  const cachedProfile = studentProfileCache.getProfile();
+  if (cachedProfile?.userId) {
+    localStorage.setItem(STUDENT_ID_KEY, String(cachedProfile.userId));
+    return cachedProfile.userId;
+  }
+
+  return null;
+}
+
+function getCachedStudentProfileForActiveStudent() {
+  const currentUser = getAuthenticatedStudentUser();
+  if (currentUser) {
+    return studentProfileCache.getProfile(currentUser.id);
+  }
+
+  const storedId = Number(localStorage.getItem(STUDENT_ID_KEY));
+  if (Number.isFinite(storedId) && storedId > 0) {
+    return studentProfileCache.getProfile(storedId);
+  }
+
+  return studentProfileCache.getProfile();
+}
+
+function mapStudentProfileToProfileData(
+  profile: StudentProfileResponse | null,
+): ProfileData {
+  const currentUser = getAuthenticatedStudentUser();
+  const location = [
+    profile?.city,
+    profile?.district,
+    profile?.province ? `${profile.province} Province` : "",
+  ].filter(Boolean);
+
+  const streamParts = [
+    profile?.currentStatus,
+    profile?.alStream ? `${profile.alStream} Stream` : "",
+    profile?.intendedLevel
+      ? `Target: ${formatEducationLevel(profile.intendedLevel)}`
+      : "",
+  ].filter(Boolean);
+
+  return {
+    name: profile?.fullName || "Student",
+    email: profile?.email || currentUser?.email || "Email not available",
+    phone: profile?.mobile || "Phone not specified",
+    location: location.length > 0 ? location.join(", ") : "Location not specified",
+    stream:
+      streamParts.length > 0 ? streamParts.join(" - ") : "Academic profile not specified",
+    avatarUrl: profile?.profilePictureUrl || "",
+  };
+}
+
+function getAuthenticatedStudentUser() {
+  const currentUser = tokenService.isAuthenticated()
+    ? tokenService.getUser()
+    : null;
+
+  return currentUser?.role === "STUDENT" ? currentUser : null;
+}
+
+function displayText(value?: string | number | null) {
+  if (value === undefined || value === null || value === "") {
+    return "Not specified";
+  }
+  return String(value);
+}
+
+function formatEducationLevel(value?: string | null) {
+  if (!value) return "Not specified";
+  const normalized = value.toUpperCase();
+  if (normalized === "UNDERGRADUATE") return "Bachelor's / Undergraduate";
+  if (normalized === "POSTGRADUATE") return "Master's / Postgraduate";
+  if (normalized === "PHD") return "PhD";
+  return value;
+}
+
+function formatScholarshipType(value?: string | null) {
+  if (!value) return "Not specified";
+  const labels: Record<string, string> = {
+    FULL: "Fully Funded",
+    PARTIAL: "Partial Funding",
+    TUITION: "Tuition Only",
+    LIVING_EXPENSES: "Living Allowance",
+  };
+  return labels[value] || value;
+}
+
+function formatEnglishProficiency(profile: StudentProfileResponse | null) {
+  if (!profile?.englishTest) return "Not specified";
+  return profile.overallScore
+    ? `${profile.englishTest} ${profile.overallScore}`
+    : profile.englishTest;
+}
+
+function formatOlCounts(profile: StudentProfileResponse | null) {
+  const counts = [
+    profile?.olACount !== undefined ? `A: ${profile.olACount}` : "",
+    profile?.olBCount !== undefined ? `B: ${profile.olBCount}` : "",
+    profile?.olCCount !== undefined ? `C: ${profile.olCCount}` : "",
+  ].filter(Boolean);
+
+  return counts.length > 0 ? counts.join(", ") : "Not specified";
+}
+
+function formatCoreOlGrades(profile: StudentProfileResponse | null) {
+  const grades = [
+    profile?.mathsGrade ? `Maths: ${profile.mathsGrade}` : "",
+    profile?.scienceGrade ? `Science: ${profile.scienceGrade}` : "",
+    profile?.englishGrade ? `English: ${profile.englishGrade}` : "",
+  ].filter(Boolean);
+
+  return grades.length > 0 ? grades.join(", ") : "Not specified";
+}
+
+function getAlSubjectBadges(profile: StudentProfileResponse | null) {
+  if (!profile) return [];
+  return [
+    [profile.subject1, profile.grade1],
+    [profile.subject2, profile.grade2],
+    [profile.subject3, profile.grade3],
+  ]
+    .filter(([subject]) => subject)
+    .map(([subject, grade]) => (grade ? `${subject} (${grade})` : String(subject)));
+}
+
+function mapStudentApplicationToAppliedScholarship(
+  application: StudentApplicationResponse,
+): AppliedScholarship {
+  const status = normalizeApplicationStatus(application.status);
+
+  return {
+    id: application.applicationId,
+    name: application.scholarshipTitle || "Unknown Scholarship",
+    provider: application.providerName || "Scholarship provider",
+    appliedDate: application.appliedAt,
+    lastUpdated: application.updatedAt || application.appliedAt,
+    status,
+    referenceCode: `APP-${application.applicationId}`,
+    nextUpdate: getApplicationNextUpdate(status),
+    requiredAction: getApplicationRequiredAction(status),
+    documents: application.requiredDocuments || [],
+  };
+}
+
+function normalizeApplicationStatus(status?: string): AppliedScholarshipStatus {
+  const normalized = (status || "SUBMITTED").toLowerCase().replace(/_/g, "-");
+  if (
+    normalized === "submitted" ||
+    normalized === "under-review" ||
+    normalized === "shortlisted" ||
+    normalized === "accepted" ||
+    normalized === "rejected"
+  ) {
+    return normalized;
+  }
+
+  return "submitted";
+}
+
+function getApplicationNextUpdate(status: AppliedScholarshipStatus) {
+  const messages: Record<AppliedScholarshipStatus, string> = {
+    submitted: "The provider has received your application.",
+    "under-review": "The provider is reviewing your eligibility and documents.",
+    shortlisted: "Watch for interview, document verification, or final decision updates.",
+    accepted: "Your application has been accepted.",
+    rejected: "A final decision has been recorded for this application.",
+  };
+
+  return messages[status];
+}
+
+function getApplicationRequiredAction(status: AppliedScholarshipStatus) {
+  const messages: Record<AppliedScholarshipStatus, string> = {
+    submitted: "No action is needed unless the provider requests more information.",
+    "under-review": "Keep your documents ready for verification.",
+    shortlisted: "Prepare for the next selection step from the provider.",
+    accepted: "Follow the provider's acceptance instructions.",
+    rejected: "No action is required for this application.",
+  };
+
+  return messages[status];
+}
+
+function getApplicationStatusLabel(status: AppliedScholarshipStatus) {
+  const labels: Record<AppliedScholarshipStatus, string> = {
+    submitted: "Submitted",
+    "under-review": "Under Review",
+    shortlisted: "Shortlisted",
+    accepted: "Accepted",
+    rejected: "Rejected",
+  };
+
+  return labels[status];
+}
+
+function getApplicationStatusClass(status: AppliedScholarshipStatus) {
+  const classes: Record<AppliedScholarshipStatus, string> = {
+    submitted: "bg-blue-100 text-blue-700",
+    "under-review": "bg-orange-100 text-orange-700",
+    shortlisted: "bg-purple-100 text-purple-700",
+    accepted: "bg-green-100 text-green-700",
+    rejected: "bg-red-100 text-red-700",
+  };
+
+  return classes[status];
+}
+
+function getApplicationTrackingSteps(application: AppliedScholarship) {
+  const currentStepIndex: Record<AppliedScholarshipStatus, number> = {
+    submitted: 0,
+    "under-review": 1,
+    shortlisted: 2,
+    accepted: 3,
+    rejected: 3,
+  };
+
+  const finalStepDescription =
+    application.status === "accepted"
+      ? "Your application has been accepted by the scholarship provider."
+      : application.status === "rejected"
+        ? "Your application was not selected in this round."
+        : "Final decision will appear here after review is complete.";
+
+  const steps = [
+    {
+      title: "Submitted",
+      description: `Application received on ${formatSavedDate(application.appliedDate)}.`,
+    },
+    {
+      title: "Under review",
+      description:
+        "The provider is checking eligibility, documents, and scholarship fit.",
+    },
+    {
+      title: "Shortlist",
+      description:
+        "Reviewers compare applications and prepare interview or shortlist decisions.",
+    },
+    {
+      title: application.status === "rejected" ? "Decision issued" : "Decision",
+      description: finalStepDescription,
+    },
+  ];
+
+  const activeIndex = currentStepIndex[application.status];
+
+  return steps.map((step, index) => ({
+    ...step,
+    isActive: index === activeIndex && application.status !== "accepted",
+    isComplete: index < activeIndex || application.status === "accepted",
+    isRejected: application.status === "rejected" && index === activeIndex,
+  }));
+}

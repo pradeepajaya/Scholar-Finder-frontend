@@ -1,11 +1,13 @@
 package com.scholarfinder.scholarship.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scholarfinder.scholarship.dto.ApplicationResponse;
 import com.scholarfinder.scholarship.dto.ApplicationSubmitRequest;
 import com.scholarfinder.scholarship.dto.InstitutionApplicationDto;
 import com.scholarfinder.scholarship.dto.MatchResult;
+import com.scholarfinder.scholarship.dto.StudentApplicationDto;
 import com.scholarfinder.scholarship.entity.Application;
 import com.scholarfinder.scholarship.entity.Scholarship;
 import com.scholarfinder.scholarship.entity.StudentProfile;
@@ -19,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +32,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ApplicationService {
 
+    private static final TypeReference<Map<String, Object>> APPLICATION_DOCUMENTS_TYPE = new TypeReference<>() {};
+
     private final ApplicationRepository applicationRepository;
     private final ScholarshipRepository scholarshipRepository;
     private final StudentProfileRepository studentProfileRepository;
@@ -37,9 +42,12 @@ public class ApplicationService {
 
     @Transactional
     public ApplicationResponse submitApplication(Long scholarshipId, ApplicationSubmitRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Application request is required");
+        }
+
         Long safeScholarshipId = requireId(scholarshipId, "Scholarship");
-        Long studentId = request != null ? request.getStudentId() : null;
-        Long safeStudentId = requireId(studentId, "Student");
+        Long safeStudentId = requireId(request.getStudentId(), "Student");
 
         Scholarship scholarship = scholarshipRepository.findById(safeScholarshipId)
             .orElseThrow(() -> new IllegalArgumentException("Scholarship not found"));
@@ -147,27 +155,40 @@ public class ApplicationService {
         return applications.stream().map(app -> {
             Scholarship scholarship = scholarshipRepository.findById(app.getScholarshipId()).orElse(null);
             StudentProfile student = studentProfileRepository.findByUserId(app.getStudentId()).orElse(null);
-            
-            String qualificationSummary = "";
-            String currentEducation = "";
-            try {
-                if (app.getDocuments() != null) {
-                    Map<String, Object> docs = objectMapper.readValue(app.getDocuments(), Map.class);
-                    qualificationSummary = (String) docs.get("qualificationSummary");
-                    currentEducation = (String) docs.get("currentEducation");
-                }
-            } catch (Exception e) {
-                log.error("Failed to parse documents JSON for application ID {}", app.getId());
-            }
+            Map<String, Object> docs = readApplicationDocuments(app);
+            Map<String, Object> qualifications = readQualifications(docs);
+
+            String studentName = firstPresent(
+                stringValue(qualifications.get("fullName")),
+                student != null ? student.getFullName() : null,
+                "Unknown Student"
+            );
+            String studentEmail = firstPresent(stringValue(qualifications.get("email")), "");
+            String studentPhone = firstPresent(
+                stringValue(qualifications.get("phone")),
+                student != null ? student.getMobile() : null,
+                ""
+            );
+            String qualificationSummary = firstPresent(
+                app.getStatementOfPurpose(),
+                stringValue(docs.get("qualificationSummary")),
+                ""
+            );
+            String currentEducation = firstPresent(
+                stringValue(qualifications.get("currentEducation")),
+                stringValue(docs.get("currentEducation")),
+                student != null ? student.getCurrentStatus() : null,
+                ""
+            );
 
             return InstitutionApplicationDto.builder()
                 .applicationId(app.getId())
                 .scholarshipId(scholarship != null ? scholarship.getId() : null)
                 .scholarshipTitle(scholarship != null ? scholarship.getTitle() : "Unknown Scholarship")
                 .studentId(app.getStudentId())
-                .studentName(student != null ? student.getFirstName() + " " + student.getLastName() : "Unknown Student")
-                .studentEmail(student != null ? student.getEmail() : "")
-                .studentPhone(student != null ? student.getPhone() : "")
+                .studentName(studentName)
+                .studentEmail(studentEmail)
+                .studentPhone(studentPhone)
                 .qualificationSummary(qualificationSummary)
                 .currentEducation(currentEducation)
                 .status(app.getStatus())
@@ -175,5 +196,74 @@ public class ApplicationService {
                 .matchPercentage(app.getMatchScore() != null ? app.getMatchScore().doubleValue() : 0.0)
                 .build();
         }).collect(Collectors.toList());
+    }
+
+    public List<StudentApplicationDto> getApplicationsByStudentId(Long studentId) {
+        List<Application> applications = applicationRepository.findByStudentIdOrderByCreatedAtDesc(studentId);
+
+        return applications.stream().map(app -> {
+            Scholarship scholarship = scholarshipRepository.findById(app.getScholarshipId()).orElse(null);
+            Map<String, Object> docs = readApplicationDocuments(app);
+
+            return StudentApplicationDto.builder()
+                .applicationId(app.getId())
+                .scholarshipId(app.getScholarshipId())
+                .scholarshipTitle(firstPresent(
+                    scholarship != null ? scholarship.getTitle() : null,
+                    stringValue(docs.get("scholarshipTitle")),
+                    "Unknown Scholarship"
+                ))
+                .providerName(firstPresent(
+                    scholarship != null ? scholarship.getProviderName() : null,
+                    stringValue(docs.get("providerName")),
+                    ""
+                ))
+                .status(app.getStatus())
+                .appliedAt(app.getCreatedAt())
+                .updatedAt(app.getUpdatedAt())
+                .matchPercentage(app.getMatchScore() != null ? app.getMatchScore().doubleValue() : null)
+                .requiredDocuments(scholarship != null ? scholarship.getRequiredDocuments() : null)
+                .build();
+        }).collect(Collectors.toList());
+    }
+
+    private Map<String, Object> readApplicationDocuments(Application app) {
+        if (app.getDocuments() == null || app.getDocuments().isBlank()) {
+            return Collections.emptyMap();
+        }
+
+        try {
+            return objectMapper.readValue(app.getDocuments(), APPLICATION_DOCUMENTS_TYPE);
+        } catch (Exception e) {
+            log.error("Failed to parse documents JSON for application ID {}", app.getId(), e);
+            return Collections.emptyMap();
+        }
+    }
+
+    private Map<String, Object> readQualifications(Map<String, Object> docs) {
+        Object qualifications = docs.get("qualifications");
+        if (qualifications instanceof Map<?, ?> qualificationsMap) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            qualificationsMap.forEach((key, value) -> {
+                if (key instanceof String stringKey) {
+                    result.put(stringKey, value);
+                }
+            });
+            return result;
+        }
+        return Collections.emptyMap();
+    }
+
+    private String firstPresent(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private String stringValue(Object value) {
+        return value instanceof String stringValue ? stringValue : null;
     }
 }

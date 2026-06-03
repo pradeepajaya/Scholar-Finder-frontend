@@ -1247,6 +1247,7 @@ export function ScholarshipDetailsDialog({
   isLoading,
   error,
   onApplyNow,
+  contentClassName = "",
 }: {
   scholarship: BrowseScholarship | null;
   open: boolean;
@@ -1254,6 +1255,7 @@ export function ScholarshipDetailsDialog({
   isLoading: boolean;
   error: string;
   onApplyNow: (scholarship: BrowseScholarship) => void;
+  contentClassName?: string;
 }) {
   if (!scholarship) {
     return (
@@ -1305,7 +1307,9 @@ export function ScholarshipDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className={`max-w-4xl max-h-[90vh] overflow-y-auto ${contentClassName}`}
+      >
         <DialogHeader>
           <DialogTitle className="text-2xl leading-tight">
             {scholarship.title}
