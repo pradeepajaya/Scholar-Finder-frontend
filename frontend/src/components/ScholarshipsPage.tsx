@@ -411,7 +411,7 @@ const levels = [
   "PhD",
 ];
 
-type BrowseScholarship = (typeof scholarships)[number] & {
+export type BrowseScholarship = (typeof scholarships)[number] & {
   source: "backend" | "static";
   coveragePercentage?: number;
   eligibleCountries?: string[];
@@ -526,7 +526,7 @@ const formatAmount = (scholarship: ScholarshipDto) => {
   return "Contact for details";
 };
 
-const mapBackendScholarship = (
+export const mapBackendScholarship = (
   scholarship: ScholarshipDto,
 ): BrowseScholarship => {
   const eligibleCountries = scholarship.eligibleCountries ?? [];
@@ -1240,7 +1240,7 @@ function DetailField({ label, value }: { label: string; value?: ReactNode }) {
   );
 }
 
-function ScholarshipDetailsDialog({
+export function ScholarshipDetailsDialog({
   scholarship,
   open,
   onOpenChange,
@@ -1448,7 +1448,7 @@ function ScholarshipDetailsDialog({
   );
 }
 
-function ScholarshipApplicationDialog({
+export function ScholarshipApplicationDialog({
   scholarship,
   open,
   onOpenChange,
@@ -2435,7 +2435,7 @@ function ScholarshipApplicationDialog({
   );
 }
 
-function ScholarshipCard({
+export function ScholarshipCard({
   scholarship,
   index,
   featured,

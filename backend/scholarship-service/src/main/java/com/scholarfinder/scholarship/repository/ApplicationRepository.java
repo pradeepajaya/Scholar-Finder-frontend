@@ -47,4 +47,10 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
      */
     @Query("SELECT a FROM Application a WHERE a.scholarshipId = :scholarshipId ORDER BY a.matchScore DESC")
     List<Application> findTopCandidates(@Param("scholarshipId") Long scholarshipId);
+
+    /**
+     * Find applications by institution ID (through the associated scholarship)
+     */
+    @Query("SELECT a FROM Application a JOIN Scholarship s ON a.scholarshipId = s.id WHERE s.institutionId = :institutionId ORDER BY a.createdAt DESC")
+    List<Application> findByInstitutionId(@Param("institutionId") Long institutionId);
 }

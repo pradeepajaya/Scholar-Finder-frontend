@@ -35,6 +35,12 @@ import {
   getStoredSavedScholarships,
   saveScholarship,
 } from "@/utils/savedScholarships";
+import {
+  BrowseScholarship,
+  ScholarshipDetailsDialog,
+  ScholarshipApplicationDialog,
+  mapBackendScholarship,
+} from "./ScholarshipsPage";
 
 interface ScholarshipMatch {
   id: number;
@@ -121,6 +127,14 @@ export function ScholarshipMatching({
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
 
+  const [selectedScholarship, setSelectedScholarship] = useState<BrowseScholarship | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+
+  const [applicationScholarship, setApplicationScholarship] = useState<BrowseScholarship | null>(null);
+  const [isApplicationOpen, setIsApplicationOpen] = useState(false);
+
   const handleSaveScholarship = (scholarship: ScholarshipMatch) => {
     const nextSaved = saveScholarship({
       id: scholarship.id,
@@ -139,6 +153,32 @@ export function ScholarshipMatching({
     });
 
     setSavedScholarshipIds(nextSaved.map((item) => item.id));
+  };
+
+  const handleViewDetails = async (match: ScholarshipMatch) => {
+    setIsDetailsOpen(true);
+    setDetailsError("");
+    setIsDetailsLoading(true);
+    try {
+      const response = await scholarshipApi.getScholarship(match.id);
+      setSelectedScholarship(mapBackendScholarship(response.data));
+    } catch (error) {
+      console.error("Failed to load scholarship details:", error);
+      setDetailsError("Could not load details from the server.");
+    } finally {
+      setIsDetailsLoading(false);
+    }
+  };
+
+  const handleApplyNow = async (match: ScholarshipMatch | BrowseScholarship) => {
+    setIsApplicationOpen(true);
+    setIsDetailsOpen(false);
+    try {
+      const response = await scholarshipApi.getScholarship(match.id);
+      setApplicationScholarship(mapBackendScholarship(response.data));
+    } catch (error) {
+      console.error("Failed to refresh scholarship before applying:", error);
+    }
   };
 
   const fetchMatches = async () => {
@@ -634,34 +674,28 @@ export function ScholarshipMatching({
                 </Accordion>
 
                 {/* Action Buttons */}
-                <div className="mt-auto flex gap-3">
-                  {scholarship.applyLink ? (
+                <div className="mt-auto pt-4 border-t border-slate-100">
+                  <div className="grid grid-cols-2 gap-2 mb-2">
                     <Button
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all"
-                      asChild
+                      variant="outline"
+                      onClick={() => handleViewDetails(scholarship)}
+                      className="w-full"
                     >
-                      <a
-                        href={scholarship.applyLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Apply Now
-                        <ExternalLink className="w-4 h-4 ml-2" />
-                      </a>
+                      View Details
                     </Button>
-                  ) : (
                     <Button
-                      className="flex-1 bg-blue-600 text-white shadow-md"
-                      disabled
+                      onClick={() => handleApplyNow(scholarship)}
+                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md hover:opacity-90"
                     >
                       Apply Now
                     </Button>
-                  )}
+                  </div>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     onClick={() => handleSaveScholarship(scholarship)}
                     disabled={savedScholarshipIds.includes(scholarship.id)}
-                    className="flex-1 border-slate-300 hover:bg-slate-50 disabled:opacity-100"
+                    className="w-full text-slate-500 hover:text-blue-600 disabled:opacity-100"
+                    size="sm"
                   >
                     <Bookmark
                       className={`w-4 h-4 mr-2 ${
@@ -671,8 +705,8 @@ export function ScholarshipMatching({
                       }`}
                     />
                     {savedScholarshipIds.includes(scholarship.id)
-                      ? "Saved"
-                      : "Save"}
+                      ? "Saved to Profile"
+                      : "Save Scholarship"}
                   </Button>
                 </div>
               </div>
@@ -702,6 +736,20 @@ export function ScholarshipMatching({
           </Button>
         </div>
       </div>
+
+      <ScholarshipDetailsDialog
+        scholarship={selectedScholarship}
+        open={isDetailsOpen}
+        onOpenChange={setIsDetailsOpen}
+        isLoading={isDetailsLoading}
+        error={detailsError}
+        onApplyNow={handleApplyNow}
+      />
+      <ScholarshipApplicationDialog
+        scholarship={applicationScholarship}
+        open={isApplicationOpen}
+        onOpenChange={setIsApplicationOpen}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 package com.scholarfinder.scholarship.controller;
 
 import com.scholarfinder.scholarship.dto.*;
+import com.scholarfinder.scholarship.dto.InstitutionApplicationDto;
 import com.scholarfinder.scholarship.entity.Scholarship;
 import com.scholarfinder.scholarship.service.ApplicationService;
 import com.scholarfinder.scholarship.service.ScholarshipService;
@@ -107,6 +108,27 @@ public class ScholarshipController {
             log.error("Error submitting application: {}", e.getMessage(), e);
             return ResponseEntity.badRequest()
                 .body(ApiResponse.error("Failed to submit application: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get all applications for an institution.
+     *
+     * GET /api/scholarships/institutions/{institutionId}/applications
+     */
+    @GetMapping("/institutions/{institutionId}/applications")
+    public ResponseEntity<ApiResponse<List<InstitutionApplicationDto>>> getInstitutionApplications(
+            @PathVariable Long institutionId) {
+
+        log.info("Getting applications for institution {}", institutionId);
+
+        try {
+            List<InstitutionApplicationDto> applications = applicationService.getApplicationsByInstitutionId(institutionId);
+            return ResponseEntity.ok(ApiResponse.success(applications, "Applications retrieved successfully"));
+        } catch (Exception e) {
+            log.error("Error getting applications: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to retrieve applications: " + e.getMessage()));
         }
     }
 

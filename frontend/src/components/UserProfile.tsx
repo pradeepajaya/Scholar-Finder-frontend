@@ -48,6 +48,12 @@ import {
   removeSavedScholarship,
   type SavedScholarship,
 } from "@/utils/savedScholarships";
+import {
+  BrowseScholarship,
+  ScholarshipDetailsDialog,
+  ScholarshipApplicationDialog,
+  mapBackendScholarship,
+} from "./ScholarshipsPage";
 import { scholarshipApi, STUDENT_ID_KEY, tokenService } from "@/services/api";
 
 interface ProfileData {
@@ -63,17 +69,6 @@ interface UserProfileProps {
   onNavigate?: (page: string) => void;
 }
 
-type SavedApplicationForm = {
-  fullName: string;
-  email: string;
-  phone: string;
-  currentEducation: string;
-  intendedLevel: string;
-  fieldOfStudy: string;
-  qualificationSummary: string;
-  coverLetter: string;
-};
-
 export function UserProfile({ onNavigate }: UserProfileProps) {
   const [documents, setDocuments] = useState<StudentDocument[]>(
     getStoredStudentDocuments,
@@ -86,24 +81,15 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
     SavedScholarship[]
   >(getStoredSavedScholarships);
   const [selectedSavedScholarship, setSelectedSavedScholarship] =
-    useState<SavedScholarship | null>(null);
+    useState<BrowseScholarship | null>(null);
   const [isSavedDetailsOpen, setIsSavedDetailsOpen] = useState(false);
+  const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+
   const [applicationScholarship, setApplicationScholarship] =
-    useState<SavedScholarship | null>(null);
+    useState<BrowseScholarship | null>(null);
   const [isApplicationOpen, setIsApplicationOpen] = useState(false);
-  const [applicationForm, setApplicationForm] = useState<SavedApplicationForm>({
-    fullName: "",
-    email: tokenService.getUser()?.email ?? "",
-    phone: "",
-    currentEducation: "",
-    intendedLevel: "",
-    fieldOfStudy: "",
-    qualificationSummary: "",
-    coverLetter: "",
-  });
-  const [isSubmittingApplication, setIsSubmittingApplication] = useState(false);
-  const [applicationError, setApplicationError] = useState("");
-  const [applicationSuccess, setApplicationSuccess] = useState("");
+
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -178,8 +164,34 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
     fileInputRef.current?.click();
   };
 
-  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const openSavedDetails = async (scholarship: SavedScholarship) => {
+    setIsSavedDetailsOpen(true);
+    setDetailsError("");
+    setIsDetailsLoading(true);
+    try {
+      const response = await scholarshipApi.getScholarship(scholarship.id);
+      setSelectedSavedScholarship(mapBackendScholarship(response.data));
+    } catch (error) {
+      console.error("Failed to load scholarship details:", error);
+      setDetailsError("Could not load details from the server.");
+    } finally {
+      setIsDetailsLoading(false);
+    }
+  };
+
+  const openSavedApplication = async (scholarship: SavedScholarship | BrowseScholarship) => {
+    setIsApplicationOpen(true);
+    setIsSavedDetailsOpen(false);
+    try {
+      const response = await scholarshipApi.getScholarship(scholarship.id);
+      setApplicationScholarship(mapBackendScholarship(response.data));
+    } catch (error) {
+      console.error("Failed to refresh scholarship before applying:", error);
+    }
+  };
+
+  const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (file && uploadingIndex !== null) {
       setDocuments((prev) => {
         const next = prev.map((doc, i) =>
@@ -889,32 +901,30 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                                 "Scholarship details are being updated."}
                             </p>
 
-                            <div className="flex flex-col gap-2 sm:flex-row">
+                            <div className="mt-auto pt-4 border-t border-slate-100">
+                              <div className="grid grid-cols-2 gap-2 mb-2">
+                                <Button
+                                  variant="outline"
+                                  onClick={() => openSavedDetails(scholarship)}
+                                  className="w-full"
+                                >
+                                  View Details
+                                </Button>
+                                <Button
+                                  onClick={() => openSavedApplication(scholarship)}
+                                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md hover:opacity-90"
+                                >
+                                  Apply Now
+                                </Button>
+                              </div>
                               <Button
+                                variant="ghost"
+                                onClick={() => handleRemoveSavedScholarship(scholarship.id)}
+                                className="w-full text-slate-500 hover:text-red-600 hover:bg-red-50"
                                 size="sm"
-                                className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
-                                onClick={() => openSavedApplication(scholarship)}
-                              >
-                                Apply Now
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex-1 border-slate-300 hover:bg-slate-50"
-                                onClick={() => openSavedDetails(scholarship)}
-                              >
-                                View Details
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-red-200 text-red-600 hover:bg-red-50"
-                                onClick={() =>
-                                  handleRemoveSavedScholarship(scholarship.id)
-                                }
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
-                                Remove
+                                Remove from Saved
                               </Button>
                             </div>
                           </div>
@@ -1064,22 +1074,18 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
           </Tabs>
         </div>
       </div>
-      <SavedScholarshipDetailsDialog
+      <ScholarshipDetailsDialog
         scholarship={selectedSavedScholarship}
         open={isSavedDetailsOpen}
         onOpenChange={setIsSavedDetailsOpen}
+        isLoading={isDetailsLoading}
+        error={detailsError}
         onApplyNow={openSavedApplication}
       />
-      <SavedScholarshipApplicationDialog
+      <ScholarshipApplicationDialog
         scholarship={applicationScholarship}
         open={isApplicationOpen}
         onOpenChange={setIsApplicationOpen}
-        formData={applicationForm}
-        isSubmitting={isSubmittingApplication}
-        error={applicationError}
-        success={applicationSuccess}
-        onFieldChange={updateApplicationField}
-        onSubmit={handleSavedApplicationSubmit}
       />
     </div>
   );
@@ -1097,387 +1103,3 @@ function formatSavedDate(date?: string) {
   });
 }
 
-function SavedScholarshipDetailsDialog({
-  scholarship,
-  open,
-  onOpenChange,
-  onApplyNow,
-}: {
-  scholarship: SavedScholarship | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onApplyNow: (scholarship: SavedScholarship) => void;
-}) {
-  if (!scholarship) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent />
-      </Dialog>
-    );
-  }
-
-  const matchedCriteria = scholarship.matchedCriteria ?? [];
-  const unmatchedCriteria = scholarship.unmatchedCriteria ?? [];
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl leading-tight">
-            {scholarship.title}
-          </DialogTitle>
-          <DialogDescription>
-            {scholarship.provider} - {scholarship.country}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6">
-          {scholarship.imageUrl && (
-            <div className="relative h-56 overflow-hidden rounded-lg bg-slate-100">
-              <img
-                src={scholarship.imageUrl}
-                alt={scholarship.title}
-                className="h-full w-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-              <div className="absolute bottom-4 left-4 flex flex-wrap gap-2">
-                <Badge className="bg-white text-slate-900">
-                  {scholarship.scholarshipType}
-                </Badge>
-                {typeof scholarship.matchPercentage === "number" && (
-                  <Badge className="bg-blue-600 text-white">
-                    {scholarship.matchPercentage}% Match
-                  </Badge>
-                )}
-              </div>
-            </div>
-          )}
-
-          <p className="text-slate-700 leading-relaxed">
-            {scholarship.description || "No description available."}
-          </p>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs font-semibold uppercase text-slate-500">
-                Funding
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {scholarship.amount || "Not specified"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs font-semibold uppercase text-slate-500">
-                Deadline
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {formatSavedDate(scholarship.deadline)}
-              </p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs font-semibold uppercase text-slate-500">
-                Provider
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {scholarship.provider}
-              </p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs font-semibold uppercase text-slate-500">
-                Saved
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {formatSavedDate(scholarship.savedAt)}
-              </p>
-            </div>
-          </div>
-
-          {(matchedCriteria.length > 0 || unmatchedCriteria.length > 0) && (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-                <h4 className="mb-3 flex items-center text-sm font-semibold text-green-900">
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  You Meet ({matchedCriteria.length})
-                </h4>
-                {matchedCriteria.length > 0 ? (
-                  <ul className="space-y-2">
-                    {matchedCriteria.map((criteria) => (
-                      <li
-                        key={criteria}
-                        className="flex items-start text-sm text-green-800"
-                      >
-                        <CheckCircle2 className="mr-2 mt-0.5 h-4 w-4 flex-shrink-0" />
-                        <span>{criteria}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-green-800">
-                    No matched criteria were stored for this scholarship.
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-                <h4 className="mb-3 flex items-center text-sm font-semibold text-orange-900">
-                  <XCircle className="mr-2 h-4 w-4" />
-                  To Improve ({unmatchedCriteria.length})
-                </h4>
-                {unmatchedCriteria.length > 0 ? (
-                  <ul className="space-y-2">
-                    {unmatchedCriteria.map((criteria) => (
-                      <li
-                        key={criteria}
-                        className="flex items-start text-sm text-orange-800"
-                      >
-                        <XCircle className="mr-2 mt-0.5 h-4 w-4 flex-shrink-0" />
-                        <span>{criteria}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-orange-800">
-                    No improvement criteria were stored for this scholarship.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row">
-            <Button
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={() => onApplyNow(scholarship)}
-            >
-              Apply Now
-            </Button>
-            {scholarship.applyLink && (
-              <Button variant="outline" asChild>
-                <a
-                  href={scholarship.applyLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Provider Application Link
-                </a>
-              </Button>
-            )}
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function SavedScholarshipApplicationDialog({
-  scholarship,
-  open,
-  onOpenChange,
-  formData,
-  isSubmitting,
-  error,
-  success,
-  onFieldChange,
-  onSubmit,
-}: {
-  scholarship: SavedScholarship | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  formData: SavedApplicationForm;
-  isSubmitting: boolean;
-  error: string;
-  success: string;
-  onFieldChange: (field: keyof SavedApplicationForm, value: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  if (!scholarship) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent />
-      </Dialog>
-    );
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl leading-tight">
-            Apply for {scholarship.title}
-          </DialogTitle>
-          <DialogDescription>
-            {scholarship.provider} - {scholarship.amount}
-          </DialogDescription>
-        </DialogHeader>
-
-        {success ? (
-          <div className="space-y-4">
-            <div className="rounded-lg border border-green-200 bg-green-50 p-5 text-green-900">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0" />
-                <div>
-                  <p className="font-semibold">{success}</p>
-                  <p className="mt-1 text-sm">
-                    You can keep reviewing this scholarship from your Saved tab.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <Button className="w-full" onClick={() => onOpenChange(false)}>
-              Done
-            </Button>
-          </div>
-        ) : (
-          <form onSubmit={onSubmit} className="space-y-5">
-            {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                {error}
-              </div>
-            )}
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="saved-application-full-name">Full Name</Label>
-                <Input
-                  id="saved-application-full-name"
-                  value={formData.fullName}
-                  onChange={(event) =>
-                    onFieldChange("fullName", event.target.value)
-                  }
-                  placeholder="Your full name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="saved-application-email">Email</Label>
-                <Input
-                  id="saved-application-email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(event) =>
-                    onFieldChange("email", event.target.value)
-                  }
-                  placeholder="you@example.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="saved-application-phone">Phone</Label>
-                <Input
-                  id="saved-application-phone"
-                  value={formData.phone}
-                  onChange={(event) =>
-                    onFieldChange("phone", event.target.value)
-                  }
-                  placeholder="+94..."
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="saved-application-current-education">
-                  Current Education
-                </Label>
-                <Input
-                  id="saved-application-current-education"
-                  value={formData.currentEducation}
-                  onChange={(event) =>
-                    onFieldChange("currentEducation", event.target.value)
-                  }
-                  placeholder="A/L, Undergraduate, Diploma..."
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="saved-application-level">Intended Level</Label>
-                <Input
-                  id="saved-application-level"
-                  value={formData.intendedLevel}
-                  onChange={(event) =>
-                    onFieldChange("intendedLevel", event.target.value)
-                  }
-                  placeholder="Undergraduate, Postgraduate..."
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="saved-application-field">Field of Study</Label>
-                <Input
-                  id="saved-application-field"
-                  value={formData.fieldOfStudy}
-                  onChange={(event) =>
-                    onFieldChange("fieldOfStudy", event.target.value)
-                  }
-                  placeholder="Engineering, Computer Science..."
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="saved-application-summary">
-                Qualification Summary
-              </Label>
-              <Textarea
-                id="saved-application-summary"
-                value={formData.qualificationSummary}
-                onChange={(event) =>
-                  onFieldChange("qualificationSummary", event.target.value)
-                }
-                placeholder="Summarize why your qualifications fit this scholarship."
-                className="min-h-28"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="saved-application-cover-letter">
-                Cover Letter
-              </Label>
-              <Textarea
-                id="saved-application-cover-letter"
-                value={formData.coverLetter}
-                onChange={(event) =>
-                  onFieldChange("coverLetter", event.target.value)
-                }
-                placeholder="Write a short message for the scholarship provider."
-                className="min-h-36"
-              />
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <p className="font-semibold text-slate-900">
-                Scholarship Summary
-              </p>
-              <div className="mt-2 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
-                <p>Funding: {scholarship.amount || "Not specified"}</p>
-                <p>Deadline: {formatSavedDate(scholarship.deadline)}</p>
-                <p>Provider: {scholarship.provider}</p>
-                <p>Country: {scholarship.country}</p>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Submitting
-                  </>
-                ) : (
-                  <>
-                    <Send className="mr-2 h-4 w-4" />
-                    Submit Application
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}

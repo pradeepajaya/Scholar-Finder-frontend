@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scholarfinder.scholarship.dto.ApplicationResponse;
 import com.scholarfinder.scholarship.dto.ApplicationSubmitRequest;
+import com.scholarfinder.scholarship.dto.InstitutionApplicationDto;
 import com.scholarfinder.scholarship.dto.MatchResult;
 import com.scholarfinder.scholarship.entity.Application;
 import com.scholarfinder.scholarship.entity.Scholarship;
@@ -19,7 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -136,5 +139,41 @@ public class ApplicationService {
             throw new IllegalArgumentException(label + " id is required");
         }
         return id;
+    }
+
+    public List<InstitutionApplicationDto> getApplicationsByInstitutionId(Long institutionId) {
+        List<Application> applications = applicationRepository.findByInstitutionId(institutionId);
+        
+        return applications.stream().map(app -> {
+            Scholarship scholarship = scholarshipRepository.findById(app.getScholarshipId()).orElse(null);
+            StudentProfile student = studentProfileRepository.findByUserId(app.getStudentId()).orElse(null);
+            
+            String qualificationSummary = "";
+            String currentEducation = "";
+            try {
+                if (app.getDocuments() != null) {
+                    Map<String, Object> docs = objectMapper.readValue(app.getDocuments(), Map.class);
+                    qualificationSummary = (String) docs.get("qualificationSummary");
+                    currentEducation = (String) docs.get("currentEducation");
+                }
+            } catch (Exception e) {
+                log.error("Failed to parse documents JSON for application ID {}", app.getId());
+            }
+
+            return InstitutionApplicationDto.builder()
+                .applicationId(app.getId())
+                .scholarshipId(scholarship != null ? scholarship.getId() : null)
+                .scholarshipTitle(scholarship != null ? scholarship.getTitle() : "Unknown Scholarship")
+                .studentId(app.getStudentId())
+                .studentName(student != null ? student.getFirstName() + " " + student.getLastName() : "Unknown Student")
+                .studentEmail(student != null ? student.getEmail() : "")
+                .studentPhone(student != null ? student.getPhone() : "")
+                .qualificationSummary(qualificationSummary)
+                .currentEducation(currentEducation)
+                .status(app.getStatus())
+                .appliedAt(app.getCreatedAt())
+                .matchPercentage(app.getMatchScore() != null ? app.getMatchScore().doubleValue() : 0.0)
+                .build();
+        }).collect(Collectors.toList());
     }
 }
