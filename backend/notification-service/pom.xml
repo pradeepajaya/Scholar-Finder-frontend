@@ -19,10 +19,10 @@
 
     <properties>
         <java.version>17</java.version>
-        <spring-cloud.version>2023.0.0</spring-cloud.version>
+        <spring-cloud.version>2025.1.1</spring-cloud.version>
     </properties>
 
-    <spring-cloud.version>2025.1.1</spring-cloud.version>
+    <dependencies>
     <!-- Spring Boot Starters -->
     <dependency>
         <groupId>org.springframework.boot</groupId>

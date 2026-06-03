@@ -395,6 +395,53 @@ const mockCandidates: Candidate[] = [
   },
 ];
 
+const buildFallbackScholarshipCandidates = (
+  scholarship: Scholarship,
+): Candidate[] => [
+  {
+    id: 100000 + scholarship.id * 10 + 1,
+    name: 'Anjali Perera',
+    email: 'anjali.perera@example.com',
+    phone: '+94 77 214 8890',
+    location: 'Colombo, Sri Lanka',
+    scholarship: scholarship.title,
+    matchScore: 94,
+    gpa: 3.86,
+    alResults: 'AAA',
+    status: 'pending',
+    appliedDate: '2026-02-04',
+    level: scholarship.level,
+  },
+  {
+    id: 100000 + scholarship.id * 10 + 2,
+    name: 'Kavindu Samarasinghe',
+    email: 'kavindu.samarasinghe@example.com',
+    phone: '+94 76 502 1187',
+    location: 'Kandy, Sri Lanka',
+    scholarship: scholarship.title,
+    matchScore: 91,
+    gpa: 3.74,
+    alResults: 'AAB',
+    status: 'shortlisted',
+    appliedDate: '2026-02-06',
+    level: scholarship.level,
+  },
+  {
+    id: 100000 + scholarship.id * 10 + 3,
+    name: 'Madhavi Fernando',
+    email: 'madhavi.fernando@example.com',
+    phone: '+94 75 618 3420',
+    location: 'Galle, Sri Lanka',
+    scholarship: scholarship.title,
+    matchScore: 88,
+    gpa: 3.68,
+    alResults: 'ABB',
+    status: 'pending',
+    appliedDate: '2026-02-08',
+    level: scholarship.level,
+  },
+];
+
 const scholarshipRequirementProfiles: Record<string, ScholarshipRequirementProfile> = {
   'Commonwealth Scholarship 2026': {
     summary:
@@ -829,6 +876,15 @@ export function InstitutionDashboard() {
     toast.success(`Selection announcement sent to ${candidate.name}.`);
   };
 
+  const handleViewCandidate = (candidate: Candidate) => {
+    setCandidates((currentCandidates) =>
+      currentCandidates.some((item) => item.id === candidate.id)
+        ? currentCandidates
+        : [...currentCandidates, candidate],
+    );
+    setSelectedCandidateProfile(candidate.id);
+  };
+
   const filteredCandidates = candidates
     .filter((c) => selectedScholarship === 'all' || c.scholarship === selectedScholarship)
     .filter(
@@ -1064,7 +1120,7 @@ export function InstitutionDashboard() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setSelectedCandidateProfile(candidate.id)}
+                  onClick={() => handleViewCandidate(candidate)}
                 >
                   <Eye className="w-4 h-4 mr-2" />
                   Review
@@ -1083,9 +1139,13 @@ export function InstitutionDashboard() {
       const scholarship = scholarships.find(s => s.id === selectedScholarshipDetail);
       if (!scholarship) return null;
 
-      const scholarshipCandidates = candidates
+      const storedScholarshipCandidates = candidates
         .filter(c => c.scholarship === scholarship.title)
         .sort((a, b) => b.matchScore - a.matchScore);
+      const isShowingSampleApplicants = storedScholarshipCandidates.length === 0;
+      const scholarshipCandidates = isShowingSampleApplicants
+        ? buildFallbackScholarshipCandidates(scholarship)
+        : storedScholarshipCandidates;
 
       return (
         <div className="space-y-6">
@@ -1184,7 +1244,11 @@ export function InstitutionDashboard() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">All Applicants</h3>
-                <p className="text-sm text-slate-600 mt-1">Sorted by match score (highest to lowest)</p>
+                <p className="text-sm text-slate-600 mt-1">
+                  {isShowingSampleApplicants
+                    ? 'Showing sample applicant data until real applications arrive'
+                    : 'Sorted by match score (highest to lowest)'}
+                </p>
               </div>
               <Button variant="outline">
                 <Download className="w-4 h-4 mr-2" />
@@ -1234,7 +1298,11 @@ export function InstitutionDashboard() {
                       }`}>
                       {candidate.status.charAt(0).toUpperCase() + candidate.status.slice(1)}
                     </span>
-                    <Button size="sm" variant="outline">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleViewCandidate(candidate)}
+                    >
                       <Eye className="w-4 h-4 mr-2" />
                       View
                     </Button>
@@ -1632,7 +1700,7 @@ export function InstitutionDashboard() {
                   variant="outline"
                   size="sm"
                   className="w-full"
-                  onClick={() => setSelectedCandidateProfile(candidate.id)}
+                  onClick={() => handleViewCandidate(candidate)}
                 >
                   <Eye className="w-4 h-4 mr-2" />
                   View Full Profile
