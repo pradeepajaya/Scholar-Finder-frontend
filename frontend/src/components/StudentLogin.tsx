@@ -18,7 +18,7 @@ import {
   Target,
   Bell,
 } from "lucide-react";
-import { authApi } from "@/services/api";
+import { authApi, STUDENT_ID_KEY } from "@/services/api";
 
 interface StudentLoginProps {
   onLogin: () => void;
@@ -45,6 +45,13 @@ const StudentLogin = ({ onLogin, onBack }: StudentLoginProps) => {
         rememberMe,
       });
       if (response.success && response.data) {
+        if (response.data.user.role !== "STUDENT") {
+          throw new Error(
+            "Access denied. Please make sure you are registered as a student.",
+          );
+        }
+
+        localStorage.setItem(STUDENT_ID_KEY, String(response.data.user.id));
         onLogin();
       } else {
         throw new Error(response.message || "Login failed");
@@ -70,26 +77,32 @@ const StudentLogin = ({ onLogin, onBack }: StudentLoginProps) => {
   };
 
   const handleDemoLogin = async () => {
-    setEmail("student@example.com");
-    setPassword("password123");
+    setEmail("alice@scholarfinder.lk");
+    setPassword("alice123");
     setError("");
     setIsLoading(true);
 
     try {
       const response = await authApi.login({
-        email: "student@example.com",
-        password: "password123",
+        email: "alice@scholarfinder.lk",
+        password: "alice123",
         rememberMe: false,
       });
       if (response.success && response.data) {
+        if (response.data.user.role !== "STUDENT") {
+          throw new Error(
+            "Access denied. Please make sure you are registered as a student.",
+          );
+        }
+
+        localStorage.setItem(STUDENT_ID_KEY, String(response.data.user.id));
         onLogin();
       } else {
         throw new Error(response.message || "Demo login failed");
       }
     } catch (err: any) {
       console.error("Demo login error:", err);
-      // Fallback to demo mode if backend is not available
-      onLogin();
+      setError(err?.message || "Demo login failed. Please try again.");
     } finally {
       setIsLoading(false);
     }

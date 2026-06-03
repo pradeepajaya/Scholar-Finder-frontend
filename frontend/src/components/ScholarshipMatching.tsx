@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Lock,
   UserPlus,
+  Bookmark,
 } from "lucide-react";
 import {
   Accordion,
@@ -28,7 +29,12 @@ import {
   ScholarshipMatchDto,
   STUDENT_ID_KEY,
   scholarshipApi,
+  tokenService,
 } from "@/services/api";
+import {
+  getStoredSavedScholarships,
+  saveScholarship,
+} from "@/utils/savedScholarships";
 
 interface ScholarshipMatch {
   id: number;
@@ -93,14 +99,47 @@ export function ScholarshipMatching({
 }: ScholarshipMatchingProps) {
   const [studentUserId] = useState<number | null>(() => {
     const stored = localStorage.getItem(STUDENT_ID_KEY);
-    return stored ? Number(stored) : null;
+    if (stored) {
+      return Number(stored);
+    }
+
+    const currentUser = tokenService.getUser();
+    if (currentUser?.role === "STUDENT") {
+      localStorage.setItem(STUDENT_ID_KEY, String(currentUser.id));
+      return currentUser.id;
+    }
+
+    return null;
   });
   const [scholarships, setScholarships] = useState<ScholarshipMatch[]>([]);
   const [matchResponse, setMatchResponse] = useState<MatchResponse | null>(
     null,
   );
+  const [savedScholarshipIds, setSavedScholarshipIds] = useState<number[]>(() =>
+    getStoredSavedScholarships().map((scholarship) => scholarship.id),
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
+
+  const handleSaveScholarship = (scholarship: ScholarshipMatch) => {
+    const nextSaved = saveScholarship({
+      id: scholarship.id,
+      title: scholarship.name,
+      provider: scholarship.provider,
+      country: scholarship.country,
+      amount: scholarship.amount,
+      scholarshipType: scholarship.type,
+      deadline: scholarship.deadline,
+      applyLink: scholarship.applyLink,
+      description: scholarship.description,
+      imageUrl: scholarship.imageUrl,
+      matchPercentage: scholarship.matchPercentage,
+      matchedCriteria: scholarship.matchedCriteria,
+      unmatchedCriteria: scholarship.unmatchedCriteria,
+    });
+
+    setSavedScholarshipIds(nextSaved.map((item) => item.id));
+  };
 
   const fetchMatches = async () => {
     if (!studentUserId) {
@@ -620,9 +659,20 @@ export function ScholarshipMatching({
                   )}
                   <Button
                     variant="outline"
-                    className="flex-1 border-slate-300 hover:bg-slate-50"
+                    onClick={() => handleSaveScholarship(scholarship)}
+                    disabled={savedScholarshipIds.includes(scholarship.id)}
+                    className="flex-1 border-slate-300 hover:bg-slate-50 disabled:opacity-100"
                   >
-                    Save
+                    <Bookmark
+                      className={`w-4 h-4 mr-2 ${
+                        savedScholarshipIds.includes(scholarship.id)
+                          ? "fill-blue-600 text-blue-600"
+                          : ""
+                      }`}
+                    />
+                    {savedScholarshipIds.includes(scholarship.id)
+                      ? "Saved"
+                      : "Save"}
                   </Button>
                 </div>
               </div>
