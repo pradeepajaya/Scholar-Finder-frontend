@@ -37,7 +37,10 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import {
+  createStudentDocumentPreviewUrl,
   getStoredStudentDocuments,
+  mergeStudentDocuments,
+  readStudentDocumentFile,
   saveStudentDocuments,
   type StudentDocument,
 } from "@/utils/studentDocuments";
@@ -96,8 +99,9 @@ interface AppliedScholarship {
 
 export function UserProfile({ onNavigate }: UserProfileProps) {
   const cachedStudentProfile = getCachedStudentProfileForActiveStudent();
+  const initialStudentUserId = resolveStudentUserId();
   const [documents, setDocuments] = useState<StudentDocument[]>(
-    getStoredStudentDocuments,
+    () => getStoredStudentDocuments(initialStudentUserId),
   );
   const [activeTab, setActiveTab] = useState("overview");
   const [studentProfile, setStudentProfile] =
@@ -133,8 +137,10 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
   >([]);
   const [isApplicationsLoading, setIsApplicationsLoading] = useState(false);
   const [applicationsError, setApplicationsError] = useState("");
+  const [isDocumentsLoading, setIsDocumentsLoading] = useState(false);
 
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const [documentViewError, setDocumentViewError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadedCount = documents.filter((d) => d.status === "uploaded").length;
@@ -175,6 +181,8 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
     setMatchCountError("");
     setIsApplicationsLoading(true);
     setApplicationsError("");
+    setIsDocumentsLoading(true);
+    setDocumentViewError("");
 
     scholarshipApi
       .getStudentProfile(studentUserId)
@@ -266,6 +274,34 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
         }
       });
 
+    scholarshipApi
+      .getStudentDocuments(studentUserId)
+      .then((response) => {
+        if (!isActive) return;
+
+        if (response.success) {
+          const nextDocuments = mergeStudentDocuments(response.data ?? []);
+          setDocuments(nextDocuments);
+          saveStudentDocuments(nextDocuments, studentUserId);
+          return;
+        }
+
+        throw new Error(response.message || "Failed to load documents");
+      })
+      .catch((err: any) => {
+        if (!isActive) return;
+        console.error("Failed to load student documents:", err);
+        setDocuments(getStoredStudentDocuments(studentUserId));
+        setDocumentViewError(
+          err?.message || "Could not load saved documents from the database.",
+        );
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsDocumentsLoading(false);
+        }
+      });
+
     return () => {
       isActive = false;
     };
@@ -278,6 +314,7 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
   }, [activeTab]);
 
   const handleUploadClick = (index: number) => {
+    setDocumentViewError("");
     setUploadingIndex(index);
     fileInputRef.current?.click();
   };
@@ -308,39 +345,135 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
     }
   };
 
-  const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && uploadingIndex !== null) {
-      setDocuments((prev) => {
-        const next = prev.map((doc, i) =>
-          i === uploadingIndex
-            ? {
-                ...doc,
-                status: "uploaded" as const,
-                fileName: file.name,
-                uploadedAt: new Date().toISOString(),
-              }
+    const selectedIndex = uploadingIndex;
+    setUploadingIndex(null);
+
+    if (file && selectedIndex !== null) {
+      const studentUserId = resolveStudentUserId();
+      if (!studentUserId) {
+        setDocumentViewError("Please log in before uploading documents.");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
+      try {
+        const fileDataUrl = await readStudentDocumentFile(file);
+        const uploadedDocument: StudentDocument = {
+          ...documents[selectedIndex],
+          status: "uploaded",
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          fileDataUrl,
+          fileUrl: undefined,
+          uploadedAt: new Date().toISOString(),
+        };
+        const optimisticDocuments = documents.map((doc, i) =>
+          i === selectedIndex
+            ? uploadedDocument
             : doc,
         );
-        saveStudentDocuments(next);
-        return next;
-      });
+
+        setDocuments(optimisticDocuments);
+        const response = await scholarshipApi.upsertStudentDocument(
+          studentUserId,
+          uploadedDocument,
+        );
+
+        if (!response.success || !response.data) {
+          throw new Error(response.message || "Failed to save document");
+        }
+
+        const nextDocuments = mergeStudentDocuments(
+          optimisticDocuments.map((doc) =>
+            doc.id === uploadedDocument.id ? response.data! : doc,
+          ),
+        );
+        setDocuments(nextDocuments);
+        saveStudentDocuments(nextDocuments, studentUserId);
+        setDocumentViewError("");
+      } catch (error: any) {
+        console.error("Failed to save selected document", error);
+        setDocuments(documents);
+        setDocumentViewError(
+          error?.message || "Could not save the selected document. Please try another file.",
+        );
+      }
     }
-    setUploadingIndex(null);
+
     // Reset input so the same file can be re-selected
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleRemoveDocument = (index: number) => {
-    setDocuments((prev) => {
-      const next = prev.map((doc, i) =>
-        i === index
-          ? { ...doc, status: "pending" as const, fileName: undefined }
-          : doc,
+  const handleViewDocument = (document: StudentDocument) => {
+    setDocumentViewError("");
+
+    let previewUrl: string | null = null;
+    try {
+      previewUrl = createStudentDocumentPreviewUrl(document);
+    } catch (error) {
+      console.error("Failed to prepare document preview", error);
+    }
+
+    if (!previewUrl) {
+      setDocumentViewError(
+        `${document.name} does not have a stored file to preview. Upload it again to view it here.`,
       );
-      saveStudentDocuments(next);
-      return next;
-    });
+      return;
+    }
+
+    const previewWindow = window.open(previewUrl, "_blank");
+    if (!previewWindow) {
+      setDocumentViewError("The document preview was blocked. Allow pop-ups and try again.");
+      return;
+    }
+
+    previewWindow.opener = null;
+    if (previewUrl.startsWith("blob:")) {
+      window.setTimeout(() => URL.revokeObjectURL(previewUrl), 10 * 60 * 1000);
+    }
+  };
+
+  const handleRemoveDocument = async (index: number) => {
+    const documentToRemove = documents[index];
+    if (!documentToRemove) return;
+
+    const studentUserId = resolveStudentUserId();
+    if (!studentUserId) {
+      setDocumentViewError("Please log in before removing documents.");
+      return;
+    }
+
+    const next = documents.map((doc, i) =>
+      i === index
+        ? {
+            ...doc,
+            status: "pending" as const,
+            fileName: undefined,
+            fileType: undefined,
+            fileSize: undefined,
+            fileDataUrl: undefined,
+            fileUrl: undefined,
+            uploadedAt: undefined,
+          }
+        : doc,
+    );
+
+    setDocuments(next);
+    setDocumentViewError("");
+
+    try {
+      await scholarshipApi.deleteStudentDocument(studentUserId, documentToRemove.id);
+      saveStudentDocuments(next, studentUserId);
+    } catch (error: any) {
+      console.error("Failed to remove student document", error);
+      setDocuments(documents);
+      setDocumentViewError(
+        error?.message || "Could not remove the document from the database.",
+      );
+    }
   };
 
   const handleCompleteProfile = () => {
@@ -1193,61 +1326,99 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                   onChange={handleFileSelected}
                 />
 
+                {isDocumentsLoading && (
+                  <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+                    <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
+                    Loading saved documents...
+                  </div>
+                )}
+
+                {documentViewError && (
+                  <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    <XCircle className="h-4 w-4 flex-shrink-0" />
+                    {documentViewError}
+                  </div>
+                )}
+
                 <div className="space-y-3">
-                  {documents.map((doc, index) => (
-                    <div
-                      key={index}
-                      className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${
-                        doc.status === "pending"
-                          ? "border-orange-200 bg-orange-50/50"
-                          : "border-slate-200"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <FileText
-                          className={`w-5 h-5 flex-shrink-0 ${
-                            doc.status === "uploaded"
-                              ? "text-green-500"
-                              : "text-slate-400"
-                          }`}
-                        />
-                        <div className="min-w-0">
-                          <span className="text-sm font-medium text-slate-900 block">
-                            {doc.name}
-                          </span>
-                          {doc.fileName && (
-                            <span className="text-xs text-slate-500 truncate block">
-                              {doc.fileName}
+                  {documents.map((doc, index) => {
+                    const hasPreview = Boolean(doc.fileDataUrl || doc.fileUrl);
+
+                    return (
+                      <div
+                        key={doc.id}
+                        className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${
+                          doc.status === "pending"
+                            ? "border-orange-200 bg-orange-50/50"
+                            : "border-slate-200"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {doc.status === "uploaded" ? (
+                            <button
+                              type="button"
+                              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                hasPreview
+                                  ? "border-green-100 bg-green-50 text-green-600 hover:bg-green-100"
+                                  : "cursor-not-allowed border-transparent text-green-500 opacity-70"
+                              }`}
+                              onClick={() => handleViewDocument(doc)}
+                              aria-label={
+                                hasPreview
+                                  ? `View ${doc.name}`
+                                  : `${doc.name} preview unavailable`
+                              }
+                              title={
+                                hasPreview
+                                  ? `View ${doc.name}`
+                                  : "Upload this document again to preview it"
+                              }
+                            >
+                              <FileText className="w-5 h-5" />
+                            </button>
+                          ) : (
+                            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center text-slate-400">
+                              <FileText className="w-5 h-5" />
                             </span>
                           )}
+                          <div className="min-w-0">
+                            <span className="text-sm font-medium text-slate-900 block">
+                              {doc.name}
+                            </span>
+                            {doc.fileName && (
+                              <span className="text-xs text-slate-500 truncate block">
+                                {doc.fileName}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      {doc.status === "uploaded" ? (
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <Badge className="bg-green-100 text-green-700">
-                            Uploaded
-                          </Badge>
+                        {doc.status === "uploaded" ? (
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <Badge className="bg-green-100 text-green-700">
+                              Uploaded
+                            </Badge>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-slate-400 hover:text-red-500 h-8 w-8 p-0"
+                              onClick={() => handleRemoveDocument(index)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ) : (
                           <Button
                             size="sm"
-                            variant="ghost"
-                            className="text-slate-400 hover:text-red-500 h-8 w-8 p-0"
-                            onClick={() => handleRemoveDocument(index)}
+                            variant="outline"
+                            onClick={() => handleUploadClick(index)}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Upload className="w-4 h-4 mr-1" />
+                            Upload
                           </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleUploadClick(index)}
-                        >
-                          <Upload className="w-4 h-4 mr-1" />
-                          Upload
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {allDocsUploaded && (

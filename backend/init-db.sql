@@ -278,6 +278,24 @@ CREATE TABLE IF NOT EXISTS scholarships.applications (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Student profile documents stored by user/student id
+CREATE TABLE IF NOT EXISTS scholarships.student_documents (
+    id BIGSERIAL PRIMARY KEY,
+    student_id BIGINT NOT NULL,
+    document_key VARCHAR(120) NOT NULL,
+    document_name VARCHAR(255) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'uploaded',
+    file_name VARCHAR(255),
+    file_type VARCHAR(255),
+    file_size BIGINT,
+    file_data BYTEA,
+    file_url VARCHAR(1000),
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_student_documents_student_key UNIQUE (student_id, document_key)
+);
+
 -- Saved Scholarships (Bookmarks)
 CREATE TABLE IF NOT EXISTS scholarships.saved_scholarships (
     id BIGSERIAL PRIMARY KEY,
@@ -590,6 +608,7 @@ CREATE INDEX IF NOT EXISTS idx_scholarships_deadline ON scholarships.scholarship
 CREATE INDEX IF NOT EXISTS idx_applications_scholarship_id ON scholarships.applications(scholarship_id);
 CREATE INDEX IF NOT EXISTS idx_applications_student_id ON scholarships.applications(student_id);
 CREATE INDEX IF NOT EXISTS idx_applications_status ON scholarships.applications(status);
+CREATE INDEX IF NOT EXISTS idx_student_documents_student_id ON scholarships.student_documents(student_id);
 
 -- Content indexes
 CREATE INDEX IF NOT EXISTS idx_news_status ON content.news(status);

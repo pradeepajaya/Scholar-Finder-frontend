@@ -303,6 +303,19 @@ export interface StudentApplicationResponse {
   requiredDocuments?: string[];
 }
 
+export interface StudentDocumentResponse {
+  id: string;
+  studentId?: number;
+  name: string;
+  status: 'uploaded' | 'pending';
+  fileName?: string;
+  fileType?: string;
+  fileSize?: number;
+  fileDataUrl?: string;
+  fileUrl?: string;
+  uploadedAt?: string;
+}
+
 export interface MatchResponse {
   studentId: number;
   studentName: string;
@@ -615,6 +628,17 @@ export const scholarshipApi = {
     apiClient.post<StudentProfileResponse>('/scholarships/students', request),
   getStudentProfile: (userId: number) =>
     apiClient.get<StudentProfileResponse>(`/scholarships/students/${userId}`),
+  getStudentDocuments: (studentId: number) =>
+    apiClient.get<StudentDocumentResponse[]>(`/scholarships/students/${studentId}/documents`),
+  upsertStudentDocument: (studentId: number, document: StudentDocumentResponse) =>
+    apiClient.put<StudentDocumentResponse>(
+      `/scholarships/students/${studentId}/documents/${encodeURIComponent(document.id)}`,
+      document,
+    ),
+  deleteStudentDocument: (studentId: number, documentId: string) =>
+    apiClient.delete<void>(
+      `/scholarships/students/${studentId}/documents/${encodeURIComponent(documentId)}`,
+    ),
   getStudentApplications: (studentId: number) =>
     apiClient.get<StudentApplicationResponse[]>(`/scholarships/students/${studentId}/applications`),
   getScholarships: () =>

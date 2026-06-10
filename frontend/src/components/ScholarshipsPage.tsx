@@ -58,6 +58,8 @@ import {
 } from "@/services/api";
 import {
   getStoredStudentDocuments,
+  mergeStudentDocuments,
+  readStudentDocumentFile,
   saveStudentDocuments,
   type StudentDocument,
 } from "@/utils/studentDocuments";
@@ -1465,7 +1467,7 @@ export function ScholarshipApplicationDialog({
     getInitialApplicationForm(scholarship),
   );
   const [documents, setDocuments] = useState<StudentDocument[]>(
-    getStoredStudentDocuments,
+    () => getStoredStudentDocuments(getStudentIdForApplication()),
   );
   const [documentChoices, setDocumentChoices] = useState<
     Record<string, DocumentChoice>
@@ -1537,10 +1539,9 @@ export function ScholarshipApplicationDialog({
   useEffect(() => {
     if (!open) return;
 
-    const storedDocuments = getStoredStudentDocuments();
-    const uploaded = storedDocuments.filter(
-      (document) => document.status === "uploaded",
-    );
+    let isActive = true;
+    const studentId = getStudentIdForApplication();
+    const storedDocuments = getStoredStudentDocuments(studentId);
 
     setDocuments(storedDocuments);
     setFormData(getInitialApplicationForm(scholarship));
@@ -1549,22 +1550,55 @@ export function ScholarshipApplicationDialog({
     setAttemptedSubmit(false);
     setCurrentStep(0);
 
-    const nextChoices = requiredDocuments.reduce<
-      Record<string, DocumentChoice>
-    >((choices, requirement) => {
-      const match = findMatchingUploadedDocument(requirement, uploaded);
-      if (match) {
-        choices[requirement] = {
-          source: "EXISTING_PROFILE_DOCUMENT",
-          documentId: match.id,
-          documentName: match.name,
-          fileName: match.fileName,
-        };
-      }
-      return choices;
-    }, {});
+    const applyDocumentChoices = (availableDocuments: StudentDocument[]) => {
+      const uploaded = availableDocuments.filter(
+        (document) => document.status === "uploaded",
+      );
+      const nextChoices = requiredDocuments.reduce<
+        Record<string, DocumentChoice>
+      >((choices, requirement) => {
+        const match = findMatchingUploadedDocument(requirement, uploaded);
+        if (match) {
+          choices[requirement] = {
+            source: "EXISTING_PROFILE_DOCUMENT",
+            documentId: match.id,
+            documentName: match.name,
+            fileName: match.fileName,
+          };
+        }
+        return choices;
+      }, {});
 
-    setDocumentChoices(nextChoices);
+      setDocumentChoices(nextChoices);
+    };
+
+    applyDocumentChoices(storedDocuments);
+
+    if (studentId) {
+      scholarshipApi
+        .getStudentDocuments(studentId)
+        .then((response) => {
+          if (!isActive) return;
+
+          if (response.success) {
+            const nextDocuments = mergeStudentDocuments(response.data ?? []);
+            setDocuments(nextDocuments);
+            saveStudentDocuments(nextDocuments, studentId);
+            applyDocumentChoices(nextDocuments);
+            return;
+          }
+
+          throw new Error(response.message || "Failed to load profile documents");
+        })
+        .catch((error) => {
+          if (!isActive) return;
+          console.error("Failed to load profile documents:", error);
+        });
+    }
+
+    return () => {
+      isActive = false;
+    };
   }, [open, scholarship?.id]);
 
   const updateField = (
@@ -1599,12 +1633,32 @@ export function ScholarshipApplicationDialog({
     });
   };
 
-  const handleRequirementUpload = (
+  const handleRequirementUpload = async (
     requirement: string,
     event: ChangeEvent<HTMLInputElement>,
   ) => {
+    const input = event.currentTarget;
     const file = event.target.files?.[0];
     if (!file) return;
+
+    setSubmitError("");
+
+    const studentId = getStudentIdForApplication();
+    if (!studentId) {
+      setSubmitError("Please log in before uploading application documents.");
+      input.value = "";
+      return;
+    }
+
+    let fileDataUrl = "";
+    try {
+      fileDataUrl = await readStudentDocumentFile(file);
+    } catch (error) {
+      console.error("Failed to read selected document", error);
+      setSubmitError("Could not read the selected document. Please try another file.");
+      input.value = "";
+      return;
+    }
 
     const existingDocument = documents.find(
       (document) =>
@@ -1618,26 +1672,53 @@ export function ScholarshipApplicationDialog({
       name: requirement,
       status: "uploaded",
       fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      fileDataUrl,
+      fileUrl: undefined,
       uploadedAt: new Date().toISOString(),
     };
-    const nextDocuments = existingDocument
-      ? documents.map((document) =>
-          document.id === existingDocument.id ? uploadedDocument : document,
-        )
-      : [...documents, uploadedDocument];
 
-    setDocuments(nextDocuments);
-    saveStudentDocuments(nextDocuments);
-    setDocumentChoices((current) => ({
-      ...current,
-      [requirement]: {
-        source: "NEW_UPLOAD",
-        documentId: uploadedDocument.id,
-        documentName: uploadedDocument.name,
-        fileName: uploadedDocument.fileName,
-      },
-    }));
-    event.target.value = "";
+    try {
+      const response = await scholarshipApi.upsertStudentDocument(
+        studentId,
+        uploadedDocument,
+      );
+
+      if (!response.success || !response.data) {
+        throw new Error(response.message || "Failed to save document");
+      }
+
+      const savedDocument = response.data;
+      const nextDocuments = mergeStudentDocuments(
+        existingDocument
+          ? documents.map((document) =>
+              document.id === existingDocument.id ? savedDocument : document,
+            )
+          : [...documents, savedDocument],
+      );
+
+      setDocuments(nextDocuments);
+      saveStudentDocuments(nextDocuments, studentId);
+      setDocumentChoices((current) => ({
+        ...current,
+        [requirement]: {
+          source: "NEW_UPLOAD",
+          documentId: savedDocument.id,
+          documentName: savedDocument.name,
+          fileName: savedDocument.fileName,
+        },
+      }));
+    } catch (error: any) {
+      console.error("Failed to save application document", error);
+      setSubmitError(
+        error?.message || "Could not save this document to your profile. Please try again.",
+      );
+      input.value = "";
+      return;
+    }
+
+    input.value = "";
   };
 
   const buildDocumentPayload = (): ApplicationDocumentDto[] =>

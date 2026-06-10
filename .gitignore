@@ -16,6 +16,11 @@ target/
 # Logs
 *.log
 
+# Local environment overrides
+.env.local
+backend/.env
+frontend/.env.local
+
 # OS files
 .DS_Store
 Thumbs.db
