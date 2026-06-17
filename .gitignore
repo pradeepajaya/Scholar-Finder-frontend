@@ -5,6 +5,9 @@ target/
 *.war
 *.class
 
+# Frontend build output
+frontend/build/
+
 # IDE files
 .idea/
 *.iml

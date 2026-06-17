@@ -19,6 +19,7 @@ import {
   Eye,
   MoreVertical,
   Bell,
+  Megaphone,
   Menu,
   X as CloseIcon
 } from 'lucide-react';
@@ -28,6 +29,7 @@ import { AdminScholarships } from './admin/AdminScholarships';
 import { AdminStudents } from './admin/AdminStudents';
 import { AdminContent } from './admin/AdminContent';
 import { AdminSettings } from './admin/AdminSettings';
+import { AdminAnnouncements } from './admin/AdminAnnouncements';
 
 export function AdminPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -38,6 +40,7 @@ export function AdminPortal() {
     { id: 'institutions', label: 'Institutions', icon: Building2 },
     { id: 'scholarships', label: 'Scholarships', icon: GraduationCap },
     { id: 'students', label: 'Students', icon: Users },
+    { id: 'announcements', label: 'Announcements', icon: Megaphone },
     { id: 'content', label: 'Content', icon: FileText },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -52,6 +55,8 @@ export function AdminPortal() {
         return <AdminScholarships />;
       case 'students':
         return <AdminStudents />;
+      case 'announcements':
+        return <AdminAnnouncements />;
       case 'content':
         return <AdminContent />;
       case 'settings':

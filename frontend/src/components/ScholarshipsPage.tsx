@@ -1262,7 +1262,16 @@ export function ScholarshipDetailsDialog({
   if (!scholarship) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent />
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Scholarship details</DialogTitle>
+            <DialogDescription>
+              {isLoading
+                ? "Loading scholarship details."
+                : error || "Select a scholarship to view its details."}
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
       </Dialog>
     );
   }
@@ -2266,7 +2275,14 @@ export function ScholarshipApplicationDialog({
   if (!scholarship) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent />
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Scholarship application</DialogTitle>
+            <DialogDescription>
+              Select a scholarship before starting an application.
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
       </Dialog>
     );
   }

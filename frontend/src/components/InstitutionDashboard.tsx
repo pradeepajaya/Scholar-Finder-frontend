@@ -31,10 +31,18 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PostScholarshipForm } from './PostScholarshipForm';
+import { notificationApi } from '../services/api';
 
 type TabType = 'overview' | 'scholarships' | 'candidates' | 'analytics' | 'announcements';
 type CandidateStatus = 'pending' | 'shortlisted' | 'selected' | 'rejected';
 type CandidateReviewAction = 'download' | 'shortlisted' | 'selected' | 'rejected' | 'announcement';
+type InstitutionBulkRecipientGroup = 'all' | 'shortlisted' | 'selected' | 'rejected';
+type InstitutionAnnouncementTemplate =
+  | 'selection'
+  | 'shortlist'
+  | 'received'
+  | 'deadline'
+  | 'custom';
 
 type Candidate = {
   id: number;
@@ -50,6 +58,14 @@ type Candidate = {
   appliedDate: string;
   level: string;
 };
+
+const candidateTestEmail = (candidateId: number) =>
+  `scholarfinders+candidate${String(candidateId).padStart(2, '0')}@gmail.com`;
+
+const withDeliverableCandidateEmail = (candidate: Candidate): Candidate => ({
+  ...candidate,
+  email: candidateTestEmail(candidate.id),
+});
 
 type ScholarshipStatus = 'active' | 'closed';
 
@@ -397,50 +413,54 @@ const mockCandidates: Candidate[] = [
 
 const buildFallbackScholarshipCandidates = (
   scholarship: Scholarship,
-): Candidate[] => [
-  {
-    id: 100000 + scholarship.id * 10 + 1,
-    name: 'Anjali Perera',
-    email: 'anjali.perera@example.com',
-    phone: '+94 77 214 8890',
-    location: 'Colombo, Sri Lanka',
-    scholarship: scholarship.title,
-    matchScore: 94,
-    gpa: 3.86,
-    alResults: 'AAA',
-    status: 'pending',
-    appliedDate: '2026-02-04',
-    level: scholarship.level,
-  },
-  {
-    id: 100000 + scholarship.id * 10 + 2,
-    name: 'Kavindu Samarasinghe',
-    email: 'kavindu.samarasinghe@example.com',
-    phone: '+94 76 502 1187',
-    location: 'Kandy, Sri Lanka',
-    scholarship: scholarship.title,
-    matchScore: 91,
-    gpa: 3.74,
-    alResults: 'AAB',
-    status: 'shortlisted',
-    appliedDate: '2026-02-06',
-    level: scholarship.level,
-  },
-  {
-    id: 100000 + scholarship.id * 10 + 3,
-    name: 'Madhavi Fernando',
-    email: 'madhavi.fernando@example.com',
-    phone: '+94 75 618 3420',
-    location: 'Galle, Sri Lanka',
-    scholarship: scholarship.title,
-    matchScore: 88,
-    gpa: 3.68,
-    alResults: 'ABB',
-    status: 'pending',
-    appliedDate: '2026-02-08',
-    level: scholarship.level,
-  },
-];
+): Candidate[] => {
+  const fallbackCandidates: Candidate[] = [
+    {
+      id: 100000 + scholarship.id * 10 + 1,
+      name: 'Anjali Perera',
+      email: '',
+      phone: '+94 77 214 8890',
+      location: 'Colombo, Sri Lanka',
+      scholarship: scholarship.title,
+      matchScore: 94,
+      gpa: 3.86,
+      alResults: 'AAA',
+      status: 'pending',
+      appliedDate: '2026-02-04',
+      level: scholarship.level,
+    },
+    {
+      id: 100000 + scholarship.id * 10 + 2,
+      name: 'Kavindu Samarasinghe',
+      email: '',
+      phone: '+94 76 502 1187',
+      location: 'Kandy, Sri Lanka',
+      scholarship: scholarship.title,
+      matchScore: 91,
+      gpa: 3.74,
+      alResults: 'AAB',
+      status: 'shortlisted',
+      appliedDate: '2026-02-06',
+      level: scholarship.level,
+    },
+    {
+      id: 100000 + scholarship.id * 10 + 3,
+      name: 'Madhavi Fernando',
+      email: '',
+      phone: '+94 75 618 3420',
+      location: 'Galle, Sri Lanka',
+      scholarship: scholarship.title,
+      matchScore: 88,
+      gpa: 3.68,
+      alResults: 'ABB',
+      status: 'pending',
+      appliedDate: '2026-02-08',
+      level: scholarship.level,
+    },
+  ];
+
+  return fallbackCandidates.map(withDeliverableCandidateEmail);
+};
 
 const scholarshipRequirementProfiles: Record<string, ScholarshipRequirementProfile> = {
   'Commonwealth Scholarship 2026': {
@@ -722,7 +742,9 @@ const candidateStatusLabels: Record<CandidateStatus, string> = {
 export function InstitutionDashboard() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [scholarships, setScholarships] = useState<Scholarship[]>(mockScholarships);
-  const [candidates, setCandidates] = useState<Candidate[]>(mockCandidates);
+  const [candidates, setCandidates] = useState<Candidate[]>(
+    mockCandidates.map(withDeliverableCandidateEmail),
+  );
   const [selectedScholarship, setSelectedScholarship] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [timePeriod, setTimePeriod] = useState('30');
@@ -733,6 +755,12 @@ export function InstitutionDashboard() {
   const [selectedCandidateProfile, setSelectedCandidateProfile] = useState<number | null>(null);
   const [activeReviewAction, setActiveReviewAction] = useState<Record<number, CandidateReviewAction | null>>({});
   const [showPostScholarshipForm, setShowPostScholarshipForm] = useState(false);
+  const [bulkRecipientGroup, setBulkRecipientGroup] =
+    useState<InstitutionBulkRecipientGroup>('all');
+  const [bulkScholarship, setBulkScholarship] = useState('all');
+  const [bulkTemplate, setBulkTemplate] =
+    useState<InstitutionAnnouncementTemplate>('selection');
+  const [isSendingBulkAnnouncement, setIsSendingBulkAnnouncement] = useState(false);
 
   const handleStartScholarshipEdit = (scholarship: Scholarship) => {
     setEditingScholarshipId(scholarship.id);
@@ -864,7 +892,7 @@ export function InstitutionDashboard() {
     );
   };
 
-  const handleAnnouncement = (candidateId: number) => {
+  const handleAnnouncement = async (candidateId: number) => {
     const candidate = candidates.find((item) => item.id === candidateId);
     if (!candidate) return;
 
@@ -873,16 +901,142 @@ export function InstitutionDashboard() {
       [candidateId]: 'announcement',
     }));
 
-    toast.success(`Selection announcement sent to ${candidate.name}.`);
+    try {
+      const response = await notificationApi.sendAnnouncement({
+        recipientGroup: 'CUSTOM',
+        recipientEmails: [candidate.email],
+        subject: `Selection announcement - ${candidate.scholarship}`,
+        message: [
+          `Dear ${candidate.name},`,
+          '',
+          `Congratulations. You have been selected for ${candidate.scholarship}.`,
+          'Our institution team will contact you with the next steps and required confirmation details.',
+          '',
+          'Best regards,',
+          'University of Colombo',
+        ].join('\n'),
+      });
+
+      if (!response.success || response.data.failedCount > 0) {
+        toast.error(
+          response.data.failures[0]?.errorMessage ||
+          response.message ||
+          `Could not send the selection email to ${candidate.name}.`,
+        );
+        return;
+      }
+
+      toast.success(`Selection announcement sent to ${candidate.name}.`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : `Could not send the selection email to ${candidate.name}.`,
+      );
+    }
+  };
+
+  const getBulkAnnouncementCandidates = () =>
+    candidates.filter((candidate) => {
+      const matchesScholarship =
+        bulkScholarship === 'all' || candidate.scholarship === bulkScholarship;
+      const matchesStatus =
+        bulkRecipientGroup === 'all' || candidate.status === bulkRecipientGroup;
+
+      return matchesScholarship && matchesStatus;
+    });
+
+  const buildBulkAnnouncementContent = (recipientCount: number) => {
+    const scholarshipName =
+      bulkScholarship === 'all' ? 'your scholarship application' : bulkScholarship;
+    const audienceLabel =
+      bulkRecipientGroup === 'all'
+        ? 'applicants'
+        : `${candidateStatusLabels[bulkRecipientGroup]} candidates`;
+
+    if (bulkTemplate === 'shortlist') {
+      return {
+        subject: `Shortlist update - ${scholarshipName}`,
+        message: `Dear candidate,\n\nYou have been shortlisted for ${scholarshipName}. Our institution team will contact you with the next review steps.\n\nThis message was sent to ${recipientCount} ${audienceLabel}.\n\nBest regards,\nUniversity of Colombo`,
+      };
+    }
+
+    if (bulkTemplate === 'received') {
+      return {
+        subject: `Application received - ${scholarshipName}`,
+        message: `Dear candidate,\n\nWe have received your application for ${scholarshipName}. Please monitor your email for review updates and document requests.\n\nThis message was sent to ${recipientCount} ${audienceLabel}.\n\nBest regards,\nUniversity of Colombo`,
+      };
+    }
+
+    if (bulkTemplate === 'deadline') {
+      return {
+        subject: `Deadline reminder - ${scholarshipName}`,
+        message: `Dear candidate,\n\nThis is a reminder to complete all pending requirements for ${scholarshipName} before the published deadline.\n\nThis message was sent to ${recipientCount} ${audienceLabel}.\n\nBest regards,\nUniversity of Colombo`,
+      };
+    }
+
+    if (bulkTemplate === 'custom') {
+      return {
+        subject: `Scholarship update - ${scholarshipName}`,
+        message: `Dear candidate,\n\nThere is an update regarding ${scholarshipName}. Please check your Scholar Finder profile and email for further details.\n\nThis message was sent to ${recipientCount} ${audienceLabel}.\n\nBest regards,\nUniversity of Colombo`,
+      };
+    }
+
+    return {
+      subject: `Selection announcement - ${scholarshipName}`,
+      message: `Dear candidate,\n\nSelection updates are now available for ${scholarshipName}. Selected candidates will receive next-step instructions from our institution team.\n\nThis message was sent to ${recipientCount} ${audienceLabel}.\n\nBest regards,\nUniversity of Colombo`,
+    };
+  };
+
+  const handleBulkAnnouncement = async () => {
+    const recipients = Array.from(
+      new Set(getBulkAnnouncementCandidates().map((candidate) => candidate.email)),
+    );
+
+    if (recipients.length === 0) {
+      toast.error('No candidates match the selected announcement filters.');
+      return;
+    }
+
+    const content = buildBulkAnnouncementContent(recipients.length);
+
+    setIsSendingBulkAnnouncement(true);
+
+    try {
+      const response = await notificationApi.sendAnnouncement({
+        recipientGroup: 'CUSTOM',
+        recipientEmails: recipients,
+        subject: content.subject,
+        message: content.message,
+      });
+
+      if (!response.success || response.data.failedCount > 0) {
+        toast.error(
+          response.message ||
+          `Sent ${response.data.sentCount}; ${response.data.failedCount} failed.`,
+        );
+        return;
+      }
+
+      toast.success(`Bulk announcement sent to ${response.data.sentCount} candidates.`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Could not send bulk announcement.',
+      );
+    } finally {
+      setIsSendingBulkAnnouncement(false);
+    }
   };
 
   const handleViewCandidate = (candidate: Candidate) => {
+    const deliverableCandidate = withDeliverableCandidateEmail(candidate);
+
     setCandidates((currentCandidates) =>
-      currentCandidates.some((item) => item.id === candidate.id)
+      currentCandidates.some((item) => item.id === deliverableCandidate.id)
         ? currentCandidates
-        : [...currentCandidates, candidate],
+        : [...currentCandidates, deliverableCandidate],
     );
-    setSelectedCandidateProfile(candidate.id);
+    setSelectedCandidateProfile(deliverableCandidate.id);
   };
 
   const filteredCandidates = candidates
@@ -1853,7 +2007,10 @@ export function InstitutionDashboard() {
     </div>
   );
 
-  const renderAnnouncements = () => (
+  const renderAnnouncements = () => {
+    const bulkRecipientCount = getBulkAnnouncementCandidates().length;
+
+    return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-slate-900">Announcements</h2>
@@ -1880,6 +2037,7 @@ export function InstitutionDashboard() {
                   <div>
                     <h4 className="font-semibold text-slate-900">{candidate.name}</h4>
                     <p className="text-sm text-slate-600">{candidate.scholarship}</p>
+                    <p className="text-xs text-slate-500">{candidate.email}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1902,40 +2060,63 @@ export function InstitutionDashboard() {
         <div className="space-y-4">
           <div>
             <Label>Recipient Group</Label>
-            <select className="w-full mt-2 px-4 py-2 border border-slate-300 rounded-lg">
-              <option>All Applicants</option>
-              <option>Shortlisted Candidates</option>
-              <option>Selected Candidates</option>
-              <option>Rejected Candidates</option>
+            <select
+              value={bulkRecipientGroup}
+              onChange={(event) =>
+                setBulkRecipientGroup(event.target.value as InstitutionBulkRecipientGroup)
+              }
+              className="w-full mt-2 px-4 py-2 border border-slate-300 rounded-lg"
+            >
+              <option value="all">All Applicants</option>
+              <option value="shortlisted">Shortlisted Candidates</option>
+              <option value="selected">Selected Candidates</option>
+              <option value="rejected">Rejected Candidates</option>
             </select>
           </div>
           <div>
             <Label>Scholarship</Label>
-            <select className="w-full mt-2 px-4 py-2 border border-slate-300 rounded-lg">
-              <option>All Scholarships</option>
+            <select
+              value={bulkScholarship}
+              onChange={(event) => setBulkScholarship(event.target.value)}
+              className="w-full mt-2 px-4 py-2 border border-slate-300 rounded-lg"
+            >
+              <option value="all">All Scholarships</option>
               {scholarships.map((s) => (
-                <option key={s.id}>{s.title}</option>
+                <option key={s.id} value={s.title}>{s.title}</option>
               ))}
             </select>
           </div>
           <div>
             <Label>Message Template</Label>
-            <select className="w-full mt-2 px-4 py-2 border border-slate-300 rounded-lg">
-              <option>Selection Announcement</option>
-              <option>Shortlist Notification</option>
-              <option>Application Received</option>
-              <option>Deadline Reminder</option>
-              <option>Custom Message</option>
+            <select
+              value={bulkTemplate}
+              onChange={(event) =>
+                setBulkTemplate(event.target.value as InstitutionAnnouncementTemplate)
+              }
+              className="w-full mt-2 px-4 py-2 border border-slate-300 rounded-lg"
+            >
+              <option value="selection">Selection Announcement</option>
+              <option value="shortlist">Shortlist Notification</option>
+              <option value="received">Application Received</option>
+              <option value="deadline">Deadline Reminder</option>
+              <option value="custom">Custom Message</option>
             </select>
           </div>
-          <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white">
+          <Button
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+            onClick={handleBulkAnnouncement}
+            disabled={isSendingBulkAnnouncement || bulkRecipientCount === 0}
+          >
             <Send className="w-4 h-4 mr-2" />
-            Send Bulk Announcement
+            {isSendingBulkAnnouncement
+              ? 'Sending Bulk Announcement'
+              : `Send Bulk Announcement (${bulkRecipientCount})`}
           </Button>
         </div>
       </Card>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-12">

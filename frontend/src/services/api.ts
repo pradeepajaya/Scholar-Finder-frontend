@@ -165,6 +165,9 @@ export interface StudentProfileResponse {
   willingToReturn?: string;
   profilePictureUrl?: string;
   profileCompletionPercentage?: number;
+  applicationCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MatchRequest {
@@ -250,6 +253,8 @@ export interface ScholarshipDto {
   viewsCount?: number;
 }
 
+export type ScholarshipUpdateRequest = Partial<ScholarshipDto>;
+
 export interface ApplicationDocumentDto {
   requirementName: string;
   source: 'EXISTING_PROFILE_DOCUMENT' | 'NEW_UPLOAD';
@@ -326,6 +331,37 @@ export interface MatchResponse {
   fairMatches: number;
   scholarships: ScholarshipMatchDto[];
   improvementSuggestions: string[];
+}
+
+export type AnnouncementRecipientGroup = 'ALL' | 'STUDENTS' | 'INSTITUTIONS' | 'CUSTOM';
+
+export interface AnnouncementRequest {
+  recipientGroup: AnnouncementRecipientGroup;
+  subject: string;
+  message: string;
+  verifiedOnly?: boolean;
+  recipientEmails?: string[];
+}
+
+export interface AnnouncementFailure {
+  recipientEmail: string;
+  status: string;
+  errorMessage?: string;
+}
+
+export interface AnnouncementResponse {
+  recipientGroup: AnnouncementRecipientGroup;
+  recipientCount: number;
+  sentCount: number;
+  failedCount: number;
+  failures: AnnouncementFailure[];
+  sentAt: string;
+}
+
+export interface AudienceCountsResponse {
+  all: number;
+  students: number;
+  institutions: number;
 }
 
 // Token management
@@ -628,6 +664,8 @@ export const scholarshipApi = {
     apiClient.post<StudentProfileResponse>('/scholarships/students', request),
   getStudentProfile: (userId: number) =>
     apiClient.get<StudentProfileResponse>(`/scholarships/students/${userId}`),
+  getAllStudentProfiles: () =>
+    apiClient.get<StudentProfileResponse[]>('/scholarships/students/admin/all'),
   getStudentDocuments: (studentId: number) =>
     apiClient.get<StudentDocumentResponse[]>(`/scholarships/students/${studentId}/documents`),
   upsertStudentDocument: (studentId: number, document: StudentDocumentResponse) =>
@@ -645,10 +683,25 @@ export const scholarshipApi = {
     apiClient.get<ScholarshipDto[]>('/scholarships'),
   getScholarship: (id: number) =>
     apiClient.get<ScholarshipDto>(`/scholarships/${id}`),
+  getAllScholarships: () =>
+    apiClient.get<ScholarshipDto[]>('/scholarships/admin/all'),
+  updateScholarship: (id: number, request: ScholarshipUpdateRequest) =>
+    apiClient.put<ScholarshipDto>(`/scholarships/admin/${id}`, request),
+  deleteScholarship: (id: number) =>
+    apiClient.delete<void>(`/scholarships/admin/${id}`),
   submitApplication: (scholarshipId: number, request: ApplicationSubmitRequest) =>
     apiClient.post<ApplicationResponse>(`/scholarships/${scholarshipId}/apply`, request),
   getMatches: (request: MatchRequest) =>
     apiClient.post<MatchResponse>('/scholarships/matches', request),
+};
+
+export const notificationApi = {
+  getAnnouncementAudienceCounts: (verifiedOnly = true) =>
+    apiClient.get<AudienceCountsResponse>(
+      `/notifications/announcements/audience-counts?verifiedOnly=${verifiedOnly}`,
+    ),
+  sendAnnouncement: (request: AnnouncementRequest) =>
+    apiClient.post<AnnouncementResponse>('/notifications/announcements', request),
 };
 
 export default apiClient;
