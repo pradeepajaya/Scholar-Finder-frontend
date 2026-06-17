@@ -43,6 +43,11 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
     long countByScholarshipId(Long scholarshipId);
 
     /**
+     * Count applications submitted by a student.
+     */
+    long countByStudentId(Long studentId);
+
+    /**
      * Get top candidates by match score.
      */
     @Query("SELECT a FROM Application a WHERE a.scholarshipId = :scholarshipId ORDER BY a.matchScore DESC")

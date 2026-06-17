@@ -64,9 +64,9 @@ logging:
 # Application specific configuration
 app:
   mail:
-    from: noreply@scholarfinder.lk
-    admin-email: admin@scholarfinder.lk
-    support-email: support@scholarfinder.lk
+    from: ${MAIL_FROM:noreply@scholarfinder.lk}
+    admin-email: ${ADMIN_EMAIL:admin@scholarfinder.lk}
+    support-email: ${SUPPORT_EMAIL:support@scholarfinder.lk}
 
 ---
 # Docker Profile

@@ -3,6 +3,7 @@ package com.scholarfinder.scholarship.service;
 import com.scholarfinder.scholarship.dto.StudentProfileRequest;
 import com.scholarfinder.scholarship.dto.StudentProfileResponse;
 import com.scholarfinder.scholarship.entity.StudentProfile;
+import com.scholarfinder.scholarship.repository.ApplicationRepository;
 import com.scholarfinder.scholarship.repository.StudentProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +19,7 @@ import java.time.LocalDateTime;
 public class StudentProfileService {
 
     private final StudentProfileRepository studentProfileRepository;
+    private final ApplicationRepository applicationRepository;
 
     @Transactional
     public StudentProfileResponse upsertProfile(StudentProfileRequest request) {
@@ -54,6 +57,13 @@ public class StudentProfileService {
             .orElseThrow(() -> new IllegalArgumentException("Student profile not found"));
 
         return mapProfileToResponse(profile);
+    }
+
+    @Transactional(readOnly = true)
+    public List<StudentProfileResponse> getAllProfiles() {
+        return studentProfileRepository.findActiveRegisteredStudentProfiles().stream()
+            .map(this::mapProfileToResponse)
+            .toList();
     }
 
     private StudentProfileResponse mapProfileToResponse(StudentProfile profile) {
@@ -116,6 +126,9 @@ public class StudentProfileService {
             .willingToReturn(profile.getWillingToReturn())
             .profilePictureUrl(profile.getProfilePictureUrl())
             .profileCompletionPercentage(profile.getProfileCompletionPercentage())
+            .applicationCount(applicationRepository.countByStudentId(profile.getUserId()))
+            .createdAt(profile.getCreatedAt())
+            .updatedAt(profile.getUpdatedAt())
             .build();
     }
 

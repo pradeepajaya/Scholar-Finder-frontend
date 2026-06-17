@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * Response DTO for student profile operations.
@@ -82,4 +83,7 @@ public class StudentProfileResponse {
     private String willingToReturn;
     private String profilePictureUrl;
     private Integer profileCompletionPercentage;
+    private Long applicationCount;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

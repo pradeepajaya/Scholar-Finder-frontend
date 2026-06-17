@@ -93,7 +93,7 @@ services:
     build: ./auth-service
     container_name: scholar-finder-auth
     ports:
-      - "8081:8081"
+      - "${AUTH_SERVICE_HOST_PORT:-8081}:8081"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
       - SPRING_DATASOURCE_USERNAME=scholarfinder
@@ -143,7 +143,7 @@ services:
     build: ./scholarship-service
     container_name: scholar-finder-scholarship
     ports:
-      - "8083:8083"
+      - "${SCHOLARSHIP_SERVICE_HOST_PORT:-8083}:8083"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
       - SPRING_DATASOURCE_USERNAME=scholarfinder
@@ -185,18 +185,16 @@ services:
   notification-service:
     build: ./notification-service
     container_name: scholar-finder-notification
+    env_file:
+      - .env
     ports:
-      - "8085:8085"
+      - "${NOTIFICATION_SERVICE_HOST_PORT:-8085}:8085"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
       - SPRING_DATASOURCE_USERNAME=scholarfinder
       - SPRING_DATASOURCE_PASSWORD=scholarfinder123
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka:eureka123@discovery-service:8761/eureka/
       - SPRING_PROFILES_ACTIVE=docker
-      - MAIL_HOST=${MAIL_HOST:-sandbox.smtp.mailtrap.io}
-      - MAIL_PORT=${MAIL_PORT:-2525}
-      - MAIL_USERNAME=${MAIL_USERNAME:-}
-      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

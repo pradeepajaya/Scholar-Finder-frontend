@@ -27,8 +27,10 @@ spring:
                 allowedOrigins:
                   - "http://localhost:5173"
                   - "http://localhost:3000"
+                  - "http://localhost:3001"
                   - "http://127.0.0.1:5173"
                   - "http://127.0.0.1:3000"
+                  - "http://127.0.0.1:3001"
                 allowedMethods:
                   - GET
                   - POST
@@ -79,7 +81,7 @@ spring:
             - id: notification-service
               uri: lb://notification-service
               predicates:
-                - Path=/api/contact/**
+                - Path=/api/contact/**, /api/notifications/**
               filters:
                 - RewritePath=/api/(?<segment>.*), /api/${segment}
 
@@ -159,7 +161,7 @@ spring:
             - id: notification-service
               uri: http://notification-service:8085
               predicates:
-                - Path=/api/contact/**
+                - Path=/api/contact/**, /api/notifications/**
               filters:
                 - RewritePath=/api/(?<segment>.*), /api/${segment}
 

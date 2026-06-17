@@ -2,7 +2,6 @@ package com.scholarfinder.notification.service;
 
 import com.scholarfinder.notification.entity.EmailNotification;
 import com.scholarfinder.notification.repository.EmailNotificationRepository;
-import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +70,52 @@ public class EmailService {
         emailRepository.save(notification);
         
         processEmail(notification);
+    }
+
+    /**
+     * Send an alert email and keep its notification metadata for auditing.
+     */
+    public void sendAlertEmail(String to, String recipientName, String subject, String body,
+                               String notificationType, Long referenceId, String referenceType) {
+        EmailNotification notification = new EmailNotification();
+        notification.setRecipientEmail(to);
+        notification.setRecipientName(recipientName);
+        notification.setSubject(subject);
+        notification.setBody(body);
+        notification.setNotificationType(notificationType);
+        notification.setReferenceId(referenceId);
+        notification.setReferenceType(referenceType);
+        notification.setStatus("PENDING");
+
+        emailRepository.save(notification);
+        processEmail(notification);
+    }
+
+    /**
+     * Send an admin announcement and return the tracked notification status.
+     */
+    public EmailNotification sendAnnouncementEmail(String to, String recipientName, String subject, String message) {
+        String greetingName = recipientName == null || recipientName.isBlank()
+            ? "Scholar Finder member"
+            : recipientName.trim();
+        String body = String.format(
+            "Dear %s,\n\n%s\n\nBest regards,\nScholar Finder Team",
+            greetingName,
+            message
+        );
+
+        EmailNotification notification = new EmailNotification();
+        notification.setRecipientEmail(to);
+        notification.setRecipientName(recipientName);
+        notification.setSubject(subject);
+        notification.setBody(body);
+        notification.setBodyHtml(buildAnnouncementHtml(greetingName, message));
+        notification.setNotificationType("ADMIN_ANNOUNCEMENT");
+        notification.setReferenceType("ADMIN_ANNOUNCEMENT");
+        notification.setStatus("PENDING");
+
+        emailRepository.save(notification);
+        return processEmail(notification);
     }
 
     /**
@@ -203,7 +248,7 @@ public class EmailService {
     /**
      * Process and send an email notification.
      */
-    private void processEmail(EmailNotification notification) {
+    private EmailNotification processEmail(EmailNotification notification) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -231,14 +276,20 @@ public class EmailService {
             emailRepository.save(notification);
             
             log.info("Email sent successfully to: {}", notification.getRecipientEmail());
-        } catch (MessagingException e) {
+        } catch (Exception e) {
             log.error("Failed to send email to: {}", notification.getRecipientEmail(), e);
-            
-            notification.setStatus("RETRY");
-            notification.setRetryCount(notification.getRetryCount() + 1);
-            notification.setErrorMessage(e.getMessage());
+
+            int retryCount = notification.getRetryCount() == null ? 0 : notification.getRetryCount();
+            int maxRetries = notification.getMaxRetries() == null ? 3 : notification.getMaxRetries();
+            int nextRetryCount = retryCount + 1;
+
+            notification.setStatus(nextRetryCount >= maxRetries ? "FAILED" : "RETRY");
+            notification.setRetryCount(nextRetryCount);
+            notification.setErrorMessage(errorMessage(e));
             emailRepository.save(notification);
         }
+
+        return notification;
     }
 
     /**
@@ -271,5 +322,47 @@ public class EmailService {
             throw new IllegalStateException(label + " is required");
         }
         return value;
+    }
+
+    private String errorMessage(Exception e) {
+        String message = e.getMessage();
+        return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
+    }
+
+    private String buildAnnouncementHtml(String greetingName, String message) {
+        String escapedMessage = escapeHtml(message)
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+            .replace("\n", "<br>");
+
+        return """
+            <!doctype html>
+            <html>
+              <body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;">
+                <div style="max-width:640px;margin:0 auto;padding:32px 20px;">
+                  <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:28px;">
+                    <p style="margin:0 0 16px;font-size:16px;line-height:1.5;">Dear %s,</p>
+                    <p style="margin:0 0 24px;font-size:16px;line-height:1.6;">%s</p>
+                    <p style="margin:0;font-size:15px;line-height:1.5;color:#475569;">
+                      Best regards,<br>Scholar Finder Team
+                    </p>
+                  </div>
+                </div>
+              </body>
+            </html>
+            """.formatted(escapeHtml(greetingName), escapedMessage);
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;");
     }
 }

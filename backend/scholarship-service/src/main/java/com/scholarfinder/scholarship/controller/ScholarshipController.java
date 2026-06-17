@@ -188,6 +188,58 @@ public class ScholarshipController {
     }
 
     /**
+     * Get all scholarships regardless of status (for admin).
+     *
+     * GET /api/scholarships/admin/all
+     */
+    @GetMapping({"/admin/all", "/all"})
+    public ResponseEntity<ApiResponse<List<Scholarship>>> getAllScholarships() {
+        List<Scholarship> scholarships = scholarshipService.getAllScholarships();
+        return ResponseEntity.ok(ApiResponse.success(scholarships, "All scholarships retrieved"));
+    }
+
+    /**
+     * Update a scholarship (admin).
+     *
+     * PUT /api/scholarships/admin/{id}
+     */
+    @PutMapping({"/admin/{id}", "/{id}"})
+    public ResponseEntity<ApiResponse<Scholarship>> updateScholarship(
+            @PathVariable Long id,
+            @RequestBody Scholarship updatedData) {
+
+        log.info("Updating scholarship: {}", id);
+
+        try {
+            Scholarship updated = scholarshipService.updateScholarship(id, updatedData);
+            return ResponseEntity.ok(ApiResponse.success(updated, "Scholarship updated successfully"));
+        } catch (Exception e) {
+            log.error("Error updating scholarship: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to update scholarship: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete a scholarship (admin).
+     *
+     * DELETE /api/scholarships/admin/{id}
+     */
+    @DeleteMapping({"/admin/{id}", "/{id}"})
+    public ResponseEntity<ApiResponse<Void>> deleteScholarship(@PathVariable Long id) {
+        log.info("Deleting scholarship: {}", id);
+
+        try {
+            scholarshipService.deleteScholarship(id);
+            return ResponseEntity.ok(ApiResponse.success(null, "Scholarship deleted successfully"));
+        } catch (Exception e) {
+            log.error("Error deleting scholarship: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to delete scholarship: " + e.getMessage()));
+        }
+    }
+
+    /**
      * Health check endpoint.
      */
     @GetMapping("/health")

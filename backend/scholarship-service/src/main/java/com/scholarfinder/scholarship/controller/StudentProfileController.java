@@ -9,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
  * REST controller for student profile operations used by matching.
  */
@@ -33,6 +35,21 @@ public class StudentProfileController {
             log.error("Error saving student profile: {}", e.getMessage(), e);
             return ResponseEntity.badRequest()
                 .body(ApiResponse.error("Failed to save student profile: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get all student profiles for the admin portal.
+     */
+    @GetMapping("/admin/all")
+    public ResponseEntity<ApiResponse<List<StudentProfileResponse>>> getAllProfiles() {
+        try {
+            List<StudentProfileResponse> response = studentProfileService.getAllProfiles();
+            return ResponseEntity.ok(ApiResponse.success(response, "Student profiles retrieved"));
+        } catch (Exception e) {
+            log.error("Error retrieving student profiles: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to retrieve student profiles: " + e.getMessage()));
         }
     }
 

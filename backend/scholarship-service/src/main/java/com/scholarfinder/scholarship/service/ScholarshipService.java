@@ -1,5 +1,6 @@
 package com.scholarfinder.scholarship.service;
 
+import com.scholarfinder.scholarship.client.NotificationClient;
 import com.scholarfinder.scholarship.dto.*;
 import com.scholarfinder.scholarship.entity.Scholarship;
 import com.scholarfinder.scholarship.entity.StudentProfile;
@@ -22,9 +23,12 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ScholarshipService {
 
+    private static final String DELETED_STATUS = "DELETED";
+
     private final ScholarshipRepository scholarshipRepository;
     private final StudentProfileRepository studentProfileRepository;
     private final MatchingService matchingService;
+    private final NotificationClient notificationClient;
 
     /**
      * Get all matched scholarships for a student.
@@ -287,6 +291,134 @@ public class ScholarshipService {
             throw new IllegalArgumentException("Scholarship ids are required");
         }
         return ids;
+    }
+
+    /**
+     * Get all scholarships regardless of status (for admin).
+     */
+    @Transactional(readOnly = true)
+    public List<Scholarship> getAllScholarships() {
+        return scholarshipRepository.findAll().stream()
+            .filter(s -> !DELETED_STATUS.equalsIgnoreCase(s.getStatus()))
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Update an existing scholarship and notify the institution.
+     */
+    @Transactional
+    public Scholarship updateScholarship(Long id, Scholarship updatedData) {
+        Long scholarshipId = requireId(id, "Scholarship");
+        Scholarship existing = scholarshipRepository.findById(scholarshipId)
+            .orElseThrow(() -> new RuntimeException("Scholarship not found with id: " + scholarshipId));
+
+        // Update fields
+        if (updatedData.getTitle() != null) existing.setTitle(updatedData.getTitle());
+        if (updatedData.getDescription() != null) existing.setDescription(updatedData.getDescription());
+        if (updatedData.getScholarshipType() != null) existing.setScholarshipType(updatedData.getScholarshipType());
+        if (updatedData.getCoveragePercentage() != null) existing.setCoveragePercentage(updatedData.getCoveragePercentage());
+        if (updatedData.getAmount() != null) existing.setAmount(updatedData.getAmount());
+        if (updatedData.getCurrency() != null) existing.setCurrency(updatedData.getCurrency());
+        if (updatedData.getEligibleCountries() != null) existing.setEligibleCountries(updatedData.getEligibleCountries());
+        if (updatedData.getEligibleFields() != null) existing.setEligibleFields(updatedData.getEligibleFields());
+        if (updatedData.getEligibleLevels() != null) existing.setEligibleLevels(updatedData.getEligibleLevels());
+        if (updatedData.getMinGpa() != null) existing.setMinGpa(updatedData.getMinGpa());
+        if (updatedData.getMinAge() != null) existing.setMinAge(updatedData.getMinAge());
+        if (updatedData.getMaxAge() != null) existing.setMaxAge(updatedData.getMaxAge());
+        if (updatedData.getRequiredEnglishTest() != null) existing.setRequiredEnglishTest(updatedData.getRequiredEnglishTest());
+        if (updatedData.getMinEnglishScore() != null) existing.setMinEnglishScore(updatedData.getMinEnglishScore());
+        if (updatedData.getMinAlPasses() != null) existing.setMinAlPasses(updatedData.getMinAlPasses());
+        if (updatedData.getRequiredAlStream() != null) existing.setRequiredAlStream(updatedData.getRequiredAlStream());
+        if (updatedData.getMinZScore() != null) existing.setMinZScore(updatedData.getMinZScore());
+        if (updatedData.getApplicationDeadline() != null) existing.setApplicationDeadline(updatedData.getApplicationDeadline());
+        if (updatedData.getStartDate() != null) existing.setStartDate(updatedData.getStartDate());
+        if (updatedData.getEndDate() != null) existing.setEndDate(updatedData.getEndDate());
+        if (updatedData.getDurationMonths() != null) existing.setDurationMonths(updatedData.getDurationMonths());
+        if (updatedData.getApplicationUrl() != null) existing.setApplicationUrl(updatedData.getApplicationUrl());
+        if (updatedData.getContactEmail() != null) existing.setContactEmail(updatedData.getContactEmail());
+        if (updatedData.getContactPhone() != null) existing.setContactPhone(updatedData.getContactPhone());
+        if (updatedData.getWebsiteUrl() != null) existing.setWebsiteUrl(updatedData.getWebsiteUrl());
+        if (updatedData.getImageUrl() != null) existing.setImageUrl(updatedData.getImageUrl());
+        if (updatedData.getStatus() != null) existing.setStatus(updatedData.getStatus());
+        if (updatedData.getIsFeatured() != null) existing.setIsFeatured(updatedData.getIsFeatured());
+        if (updatedData.getProviderName() != null) existing.setProviderName(updatedData.getProviderName());
+        if (updatedData.getRequiredDocuments() != null) existing.setRequiredDocuments(updatedData.getRequiredDocuments());
+        if (updatedData.getAdditionalRequirements() != null) existing.setAdditionalRequirements(updatedData.getAdditionalRequirements());
+        if (updatedData.getBenefits() != null) existing.setBenefits(updatedData.getBenefits());
+        if (updatedData.getSelectionCriteria() != null) existing.setSelectionCriteria(updatedData.getSelectionCriteria());
+        if (updatedData.getApplicationSteps() != null) existing.setApplicationSteps(updatedData.getApplicationSteps());
+        if (updatedData.getRequiresFinancialNeed() != null) existing.setRequiresFinancialNeed(updatedData.getRequiresFinancialNeed());
+        if (updatedData.getMaxHouseholdIncome() != null) existing.setMaxHouseholdIncome(updatedData.getMaxHouseholdIncome());
+        if (updatedData.getSportsAchievementRequired() != null) existing.setSportsAchievementRequired(updatedData.getSportsAchievementRequired());
+        if (updatedData.getLeadershipRequired() != null) existing.setLeadershipRequired(updatedData.getLeadershipRequired());
+        if (updatedData.getFirstGenerationPriority() != null) existing.setFirstGenerationPriority(updatedData.getFirstGenerationPriority());
+        if (updatedData.getDisabilityFriendly() != null) existing.setDisabilityFriendly(updatedData.getDisabilityFriendly());
+        if (updatedData.getReturnToHomeRequired() != null) existing.setReturnToHomeRequired(updatedData.getReturnToHomeRequired());
+
+        Scholarship saved = scholarshipRepository.save(existing);
+
+        // Send alert to institution
+        sendInstitutionAlert(saved, "updated");
+
+        return saved;
+    }
+
+    /**
+     * Delete a scholarship by ID.
+     */
+    @Transactional
+    public void deleteScholarship(Long id) {
+        Long scholarshipId = requireId(id, "Scholarship");
+        Scholarship existing = scholarshipRepository.findById(scholarshipId)
+            .orElseThrow(() -> new RuntimeException("Scholarship not found with id: " + scholarshipId));
+
+        existing.setStatus(DELETED_STATUS);
+        Scholarship saved = scholarshipRepository.save(existing);
+        sendInstitutionAlert(saved, "deleted");
+        log.info("Deleted scholarship: {} (id: {})", saved.getTitle(), scholarshipId);
+    }
+
+    /**
+     * Send an alert notification to the institution that owns a scholarship.
+     */
+    private void sendInstitutionAlert(Scholarship scholarship, String action) {
+        try {
+            String recipientEmail = scholarship.getContactEmail();
+            if (recipientEmail == null || recipientEmail.isBlank()) {
+                log.warn("No contact email for scholarship {} (institution {}). Skipping alert.",
+                    scholarship.getId(), scholarship.getInstitutionId());
+                return;
+            }
+
+            Map<String, Object> alertRequest = new HashMap<>();
+            alertRequest.put("recipientEmail", recipientEmail);
+            alertRequest.put("recipientName", scholarship.getProviderName() != null
+                ? scholarship.getProviderName() : "Institution");
+            alertRequest.put("subject",
+                "[Scholar Finder] Your scholarship \"" + scholarship.getTitle() + "\" has been " + action + " by Admin");
+            alertRequest.put("message", String.format(
+                "Dear %s,\n\n" +
+                "This is to inform you that your scholarship \"%s\" (ID: %d) has been %s by a Scholar Finder administrator.\n\n" +
+                "Please log in to your institution dashboard to review the changes.\n\n" +
+                "If you have any questions, please contact our support team.\n\n" +
+                "Best regards,\nScholar Finder Admin Team",
+                scholarship.getProviderName() != null ? scholarship.getProviderName() : "Institution",
+                scholarship.getTitle(),
+                scholarship.getId(),
+                action
+            ));
+            alertRequest.put("notificationType", "deleted".equals(action)
+                ? "SCHOLARSHIP_DELETED_BY_ADMIN"
+                : "SCHOLARSHIP_UPDATED_BY_ADMIN");
+            alertRequest.put("referenceId", scholarship.getId());
+            alertRequest.put("referenceType", "SCHOLARSHIP");
+
+            notificationClient.sendAlert(alertRequest);
+            log.info("Alert sent to institution for scholarship: {}", scholarship.getTitle());
+        } catch (Exception e) {
+            // Don't fail the update if the alert fails
+            log.error("Failed to send institution alert for scholarship {}: {}", scholarship.getId(), e.getMessage());
+        }
     }
 
     /**
