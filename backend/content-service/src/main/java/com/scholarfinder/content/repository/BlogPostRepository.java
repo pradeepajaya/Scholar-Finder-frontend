@@ -27,6 +27,12 @@ public interface BlogPostRepository extends JpaRepository<BlogPost, Long> {
     Page<BlogPost> findPublished(Pageable pageable);
 
     /**
+     * Find all blog posts for admin management, regardless of status.
+     */
+    @Query("SELECT b FROM BlogPost b ORDER BY b.updatedAt DESC, b.createdAt DESC")
+    Page<BlogPost> findAllForAdmin(Pageable pageable);
+
+    /**
      * Find featured blog posts.
      */
     @Query("SELECT b FROM BlogPost b WHERE b.status = 'PUBLISHED' AND b.isFeatured = true ORDER BY b.publishedAt DESC")

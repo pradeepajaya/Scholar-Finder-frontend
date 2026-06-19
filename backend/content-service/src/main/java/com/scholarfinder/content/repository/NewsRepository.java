@@ -27,6 +27,12 @@ public interface NewsRepository extends JpaRepository<News, Long> {
     Page<News> findPublished(Pageable pageable);
 
     /**
+     * Find all news for admin management, regardless of status.
+     */
+    @Query("SELECT n FROM News n ORDER BY n.updatedAt DESC, n.createdAt DESC")
+    Page<News> findAllForAdmin(Pageable pageable);
+
+    /**
      * Find featured news.
      */
     @Query("SELECT n FROM News n WHERE n.status = 'PUBLISHED' AND n.isFeatured = true ORDER BY n.publishedAt DESC")

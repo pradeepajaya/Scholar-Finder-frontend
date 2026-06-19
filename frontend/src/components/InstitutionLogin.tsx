@@ -3,24 +3,75 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Building2, Mail, Lock, Eye, EyeOff, ArrowLeft, Users, FileText, BarChart3 } from 'lucide-react';
+import { Building2, Mail, Lock, Eye, EyeOff, ArrowLeft, Users, FileText, BarChart3, AlertCircle, Loader2 } from 'lucide-react';
+import { authApi, tokenService } from '../services/api';
 
 interface InstitutionLoginProps {
   onLogin: () => void;
   onBack: () => void;
 }
 
+const DEMO_INSTITUTION_EMAIL = 'colombo@uoc.lk';
+const DEMO_INSTITUTION_PASSWORD = 'uoc';
+const DEMO_INSTITUTION_USER_ID = 4;
+
 export function InstitutionLogin({ onLogin, onBack }: InstitutionLoginProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const [credentials, setCredentials] = useState({
     email: '',
     password: '',
   });
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Institution login attempt:', credentials);
-    onLogin();
+    setError('');
+    setIsLoading(true);
+
+    const normalizedEmail = credentials.email.trim().toLowerCase();
+    const isDemoInstitutionLogin =
+      normalizedEmail === DEMO_INSTITUTION_EMAIL &&
+      credentials.password === DEMO_INSTITUTION_PASSWORD;
+
+    try {
+      const response = await authApi.login({
+        email: normalizedEmail,
+        password: credentials.password,
+        rememberMe,
+      });
+
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Login failed');
+      }
+
+      if (response.data.user.role !== 'INSTITUTION') {
+        throw new Error('Access denied. Please use an institution account.');
+      }
+
+      onLogin();
+    } catch (err) {
+      if (isDemoInstitutionLogin) {
+        tokenService.setToken('demo-institution-session');
+        tokenService.setUser({
+          id: DEMO_INSTITUTION_USER_ID,
+          email: DEMO_INSTITUTION_EMAIL,
+          role: 'INSTITUTION',
+          isVerified: true,
+        });
+        onLogin();
+        return;
+      }
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Institution login failed. Please try again.',
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -119,10 +170,17 @@ export function InstitutionLogin({ onLogin, onBack }: InstitutionLoginProps) {
                   <p className="text-sm font-semibold text-purple-900">Demo Credentials</p>
                 </div>
                 <div className="space-y-1 text-sm text-purple-800">
-                  <p><span className="font-medium">Email:</span> institution@scholarfinder.lk</p>
-                  <p><span className="font-medium">Password:</span> institution123</p>
+                  <p><span className="font-medium">Email:</span> colombo@uoc.lk</p>
+                  <p><span className="font-medium">Password:</span> uoc</p>
                 </div>
               </div>
+
+              {error && (
+                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  <AlertCircle className="mt-0.5 h-4 w-4 flex-none" />
+                  <span>{error}</span>
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="email" className="text-slate-700">Institution Email</Label>
@@ -165,7 +223,12 @@ export function InstitutionLogin({ onLogin, onBack }: InstitutionLoginProps) {
 
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="rounded border-slate-300 text-purple-600 focus:ring-purple-500" />
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(event) => setRememberMe(event.target.checked)}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
                   <span className="text-sm text-slate-600">Remember me</span>
                 </label>
                 <a href="#" className="text-sm text-purple-600 hover:text-purple-700 font-medium">
@@ -175,8 +238,10 @@ export function InstitutionLogin({ onLogin, onBack }: InstitutionLoginProps) {
 
               <Button
                 type="submit"
+                disabled={isLoading}
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white h-12 text-base font-semibold"
               >
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Sign In to Institution Portal
               </Button>
             </form>

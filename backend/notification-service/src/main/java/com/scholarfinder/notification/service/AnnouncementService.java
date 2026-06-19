@@ -4,6 +4,7 @@ import com.scholarfinder.notification.dto.AnnouncementFailureDto;
 import com.scholarfinder.notification.dto.AnnouncementRecipientGroup;
 import com.scholarfinder.notification.dto.AnnouncementRequest;
 import com.scholarfinder.notification.dto.AnnouncementResponse;
+import com.scholarfinder.notification.dto.AnnouncementRecipientDto;
 import com.scholarfinder.notification.dto.AudienceCountsResponse;
 import com.scholarfinder.notification.entity.EmailNotification;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -102,6 +103,9 @@ public class AnnouncementService {
     private List<Recipient> resolveRecipients(AnnouncementRequest request) {
         AnnouncementRecipientGroup recipientGroup = request.getRecipientGroup();
         if (recipientGroup == AnnouncementRecipientGroup.CUSTOM) {
+            if (request.getRecipients() != null && !request.getRecipients().isEmpty()) {
+                return customNamedRecipients(request.getRecipients());
+            }
             return customRecipients(request.getRecipientEmails());
         }
 
@@ -160,6 +164,25 @@ public class AnnouncementService {
                 throw new IllegalArgumentException("Invalid recipient email: " + email);
             }
             recipients.add(new Recipient(normalizedEmail, null));
+        }
+
+        return dedupeRecipients(recipients);
+    }
+
+    private List<Recipient> customNamedRecipients(List<AnnouncementRecipientDto> requestRecipients) {
+        if (requestRecipients == null || requestRecipients.isEmpty()) {
+            throw new IllegalArgumentException("Add at least one recipient email.");
+        }
+
+        List<Recipient> recipients = new ArrayList<>();
+        for (AnnouncementRecipientDto requestRecipient : requestRecipients) {
+            String normalizedEmail = normalizeEmail(requestRecipient.getEmail());
+            if (!EMAIL_PATTERN.matcher(normalizedEmail).matches()) {
+                throw new IllegalArgumentException("Invalid recipient email: " + requestRecipient.getEmail());
+            }
+
+            String name = requestRecipient.getName() == null ? null : requestRecipient.getName().trim();
+            recipients.add(new Recipient(normalizedEmail, name));
         }
 
         return dedupeRecipients(recipients);

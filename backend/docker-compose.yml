@@ -166,7 +166,7 @@ services:
     build: ./content-service
     container_name: scholar-finder-content
     ports:
-      - "8084:8084"
+      - "${CONTENT_SERVICE_HOST_PORT:-18084}:8084"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
       - SPRING_DATASOURCE_USERNAME=scholarfinder

@@ -1,5 +1,6 @@
 package com.scholarfinder.notification.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -25,6 +26,10 @@ public class AnnouncementRequest {
 
     @Size(max = 500, message = "Announcements can be sent to at most 500 custom recipients")
     private List<@NotBlank(message = "Recipient email cannot be blank") @Email(message = "Recipient email must be valid") String> recipientEmails = new ArrayList<>();
+
+    @Valid
+    @Size(max = 500, message = "Announcements can be sent to at most 500 custom recipients")
+    private List<AnnouncementRecipientDto> recipients = new ArrayList<>();
 
     public AnnouncementRecipientGroup getRecipientGroup() {
         return recipientGroup;
@@ -64,5 +69,13 @@ public class AnnouncementRequest {
 
     public void setRecipientEmails(List<String> recipientEmails) {
         this.recipientEmails = recipientEmails == null ? new ArrayList<>() : recipientEmails;
+    }
+
+    public List<AnnouncementRecipientDto> getRecipients() {
+        return recipients;
+    }
+
+    public void setRecipients(List<AnnouncementRecipientDto> recipients) {
+        this.recipients = recipients == null ? new ArrayList<>() : recipients;
     }
 }

@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -48,7 +49,10 @@ public class BlogPostService {
         mapRequestToEntity(request, blogPost);
         blogPost.setAuthorId(authorId);
         blogPost.setSlug(generateSlug(request.getTitle()));
-        blogPost.setStatus("DRAFT");
+        blogPost.setStatus(Boolean.TRUE.equals(request.getPublish()) ? "PUBLISHED" : "DRAFT");
+        if ("PUBLISHED".equals(blogPost.getStatus())) {
+            blogPost.setPublishedAt(LocalDateTime.now());
+        }
         blogPost.setViewsCount(0);
         blogPost.setLikesCount(0);
         blogPost.setCommentsCount(0);
@@ -127,6 +131,16 @@ public class BlogPostService {
     }
 
     /**
+     * Get all blog posts with pagination for admin management.
+     */
+    @Transactional(readOnly = true)
+    public PagedResponse<BlogPostDto> getAllBlogPostsForAdmin(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<BlogPost> blogPostPage = blogPostRepository.findAllForAdmin(pageable);
+        return createPagedResponse(blogPostPage);
+    }
+
+    /**
      * Get featured blog posts.
      */
     @Transactional(readOnly = true)
@@ -199,8 +213,10 @@ public class BlogPostService {
         BlogPost blogPost = blogPostRepository.findById(blogPostId)
             .orElseThrow(() -> new EntityNotFoundException("Blog post not found with id: " + id));
         
+        if (!"PUBLISHED".equals(blogPost.getStatus()) || blogPost.getPublishedAt() == null) {
+            blogPost.setPublishedAt(LocalDateTime.now());
+        }
         blogPost.setStatus("PUBLISHED");
-        blogPost.setPublishedAt(LocalDateTime.now());
         
         BlogPost saved = blogPostRepository.save(blogPost);
         return mapToDto(saved);
@@ -216,6 +232,21 @@ public class BlogPostService {
         
         blogPost.setStatus("ARCHIVED");
         
+        BlogPost saved = blogPostRepository.save(blogPost);
+        return mapToDto(saved);
+    }
+
+    /**
+     * Move a blog post back to draft status.
+     */
+    public BlogPostDto draftBlogPost(Long id) {
+        Long blogPostId = requireId(id, "Blog post");
+        BlogPost blogPost = blogPostRepository.findById(blogPostId)
+            .orElseThrow(() -> new EntityNotFoundException("Blog post not found with id: " + id));
+
+        blogPost.setStatus("DRAFT");
+        blogPost.setPublishedAt(null);
+
         BlogPost saved = blogPostRepository.save(blogPost);
         return mapToDto(saved);
     }
@@ -267,11 +298,19 @@ public class BlogPostService {
         blogPost.setExcerpt(request.getExcerpt());
         blogPost.setContent(request.getContent());
         blogPost.setFeaturedImage(request.getFeaturedImage());
+        blogPost.setImageAlt(request.getImageAlt());
+        blogPost.setAuthorName(request.getAuthorName());
+        blogPost.setAuthorBio(request.getAuthorBio());
+        blogPost.setAuthorAvatar(request.getAuthorAvatar());
         blogPost.setIsFeatured(Boolean.TRUE.equals(request.getIsFeatured()));
         blogPost.setAllowComments(request.getAllowComments() == null ? Boolean.TRUE : request.getAllowComments());
         blogPost.setReadingTime(calculateReadingTime(request.getContent()));
         blogPost.setMetaTitle(request.getMetaTitle());
         blogPost.setMetaDescription(request.getMetaDescription());
+        blogPost.setMetaKeywords(request.getMetaKeywords());
+        if (request.getRelatedScholarshipIds() != null) {
+            blogPost.setRelatedScholarshipIds(request.getRelatedScholarshipIds().toArray(new Long[0]));
+        }
 
         // Set category
         Long categoryId = request.getCategoryId();
@@ -296,7 +335,11 @@ public class BlogPostService {
         dto.setExcerpt(blogPost.getExcerpt());
         dto.setContent(blogPost.getContent());
         dto.setFeaturedImage(blogPost.getFeaturedImage());
+        dto.setImageAlt(blogPost.getImageAlt());
         dto.setAuthorId(blogPost.getAuthorId());
+        dto.setAuthorName(blogPost.getAuthorName());
+        dto.setAuthorBio(blogPost.getAuthorBio());
+        dto.setAuthorAvatar(blogPost.getAuthorAvatar());
         dto.setStatus(blogPost.getStatus());
         dto.setIsFeatured(blogPost.getIsFeatured());
         dto.setAllowComments(blogPost.getAllowComments());
@@ -309,6 +352,10 @@ public class BlogPostService {
         dto.setUpdatedAt(blogPost.getUpdatedAt());
         dto.setMetaTitle(blogPost.getMetaTitle());
         dto.setMetaDescription(blogPost.getMetaDescription());
+        dto.setMetaKeywords(blogPost.getMetaKeywords());
+        if (blogPost.getRelatedScholarshipIds() != null) {
+            dto.setRelatedScholarshipIds(Arrays.asList(blogPost.getRelatedScholarshipIds()));
+        }
 
         if (blogPost.getCategory() != null) {
             CategoryDto categoryDto = new CategoryDto();

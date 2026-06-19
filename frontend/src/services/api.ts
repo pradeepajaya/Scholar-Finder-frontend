@@ -308,6 +308,21 @@ export interface StudentApplicationResponse {
   requiredDocuments?: string[];
 }
 
+export interface InstitutionApplicationResponse {
+  applicationId: number;
+  scholarshipId?: number;
+  scholarshipTitle: string;
+  studentId: number;
+  studentName: string;
+  studentEmail?: string;
+  studentPhone?: string;
+  qualificationSummary?: string;
+  currentEducation?: string;
+  status: string;
+  appliedAt?: string;
+  matchPercentage?: number;
+}
+
 export interface StudentDocumentResponse {
   id: string;
   studentId?: number;
@@ -335,12 +350,18 @@ export interface MatchResponse {
 
 export type AnnouncementRecipientGroup = 'ALL' | 'STUDENTS' | 'INSTITUTIONS' | 'CUSTOM';
 
+export interface AnnouncementRecipient {
+  email: string;
+  name?: string;
+}
+
 export interface AnnouncementRequest {
   recipientGroup: AnnouncementRecipientGroup;
   subject: string;
   message: string;
   verifiedOnly?: boolean;
   recipientEmails?: string[];
+  recipients?: AnnouncementRecipient[];
 }
 
 export interface AnnouncementFailure {
@@ -362,6 +383,140 @@ export interface AudienceCountsResponse {
   all: number;
   students: number;
   institutions: number;
+}
+
+export interface AdminAlertDto {
+  id: number;
+  title: string;
+  message?: string;
+  status: string;
+  severity: 'INFO' | 'WARNING' | 'ERROR';
+  notificationType?: string;
+  referenceType?: string;
+  referenceId?: number;
+  recipientEmail?: string;
+  createdAt?: string;
+  sentAt?: string;
+  errorMessage?: string;
+}
+
+// Content Service Types
+export interface CategoryDto {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface TagDto {
+  id: number;
+  name: string;
+}
+
+export interface NewsDto {
+  id: number;
+  title: string;
+  slug: string;
+  summary: string;
+  content: string;
+  featuredImage?: string;
+  imageCaption?: string;
+  category?: CategoryDto;
+  tags?: TagDto[];
+  authorId?: number;
+  authorName?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  status: string;
+  isFeatured?: boolean;
+  isBreaking?: boolean;
+  sourceName?: string;
+  sourceUrl?: string;
+  viewsCount?: number;
+  publishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface NewsRequest {
+  title: string;
+  slug?: string;
+  summary?: string;
+  content: string;
+  featuredImage?: string;
+  imageCaption?: string;
+  categoryId?: number;
+  tagIds?: number[];
+  authorName?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  isFeatured?: boolean;
+  isBreaking?: boolean;
+  sourceName?: string;
+  sourceUrl?: string;
+  publish?: boolean;
+}
+
+export interface BlogPostDto {
+  id: number;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content: string;
+  featuredImage?: string;
+  imageAlt?: string;
+  category?: CategoryDto;
+  tags?: TagDto[];
+  authorId?: number;
+  authorName?: string;
+  authorBio?: string;
+  authorAvatar?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  metaKeywords?: string;
+  readingTime?: number;
+  status: string;
+  isFeatured?: boolean;
+  allowComments?: boolean;
+  viewsCount?: number;
+  likesCount?: number;
+  commentsCount?: number;
+  relatedScholarshipIds?: number[];
+  publishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BlogPostRequest {
+  title: string;
+  slug?: string;
+  excerpt?: string;
+  content: string;
+  featuredImage?: string;
+  imageAlt?: string;
+  categoryId?: number;
+  tagIds?: number[];
+  authorName?: string;
+  authorBio?: string;
+  authorAvatar?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  metaKeywords?: string;
+  isFeatured?: boolean;
+  allowComments?: boolean;
+  relatedScholarshipIds?: number[];
+  publish?: boolean;
+}
+
+export interface PagedResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+  hasNext: boolean;
+  hasPrevious: boolean;
 }
 
 // Token management
@@ -679,6 +834,10 @@ export const scholarshipApi = {
     ),
   getStudentApplications: (studentId: number) =>
     apiClient.get<StudentApplicationResponse[]>(`/scholarships/students/${studentId}/applications`),
+  getInstitutionApplicationsByUser: (institutionUserId: number) =>
+    apiClient.get<InstitutionApplicationResponse[]>(
+      `/scholarships/institutions/by-user/${institutionUserId}/applications`,
+    ),
   getScholarships: () =>
     apiClient.get<ScholarshipDto[]>('/scholarships'),
   getScholarship: (id: number) =>
@@ -696,12 +855,56 @@ export const scholarshipApi = {
 };
 
 export const notificationApi = {
+  getAdminAlerts: (page = 0, size = 20) =>
+    apiClient.get<PagedResponse<AdminAlertDto>>(
+      `/notifications/admin/alerts?page=${page}&size=${size}`,
+    ),
   getAnnouncementAudienceCounts: (verifiedOnly = true) =>
     apiClient.get<AudienceCountsResponse>(
       `/notifications/announcements/audience-counts?verifiedOnly=${verifiedOnly}`,
     ),
   sendAnnouncement: (request: AnnouncementRequest) =>
     apiClient.post<AnnouncementResponse>('/notifications/announcements', request),
+};
+
+export const contentApi = {
+  getNews: (page = 0, size = 10) =>
+    apiClient.get<PagedResponse<NewsDto>>(`/news?page=${page}&size=${size}`),
+  getAllNews: (page = 0, size = 100) =>
+    apiClient.get<PagedResponse<NewsDto>>(`/news/admin?page=${page}&size=${size}`),
+  getNewsById: (id: number) =>
+    apiClient.get<NewsDto>(`/news/${id}`),
+  createNews: (request: NewsRequest) =>
+    apiClient.post<NewsDto>('/news', request),
+  updateNews: (id: number, request: NewsRequest) =>
+    apiClient.put<NewsDto>(`/news/${id}`, request),
+  deleteNews: (id: number) =>
+    apiClient.delete<void>(`/news/${id}`),
+  publishNews: (id: number) =>
+    apiClient.post<NewsDto>(`/news/${id}/publish`, {}),
+  archiveNews: (id: number) =>
+    apiClient.post<NewsDto>(`/news/${id}/archive`, {}),
+  draftNews: (id: number) =>
+    apiClient.post<NewsDto>(`/news/${id}/draft`, {}),
+
+  getBlogPosts: (page = 0, size = 10) =>
+    apiClient.get<PagedResponse<BlogPostDto>>(`/blogs?page=${page}&size=${size}`),
+  getAllBlogPosts: (page = 0, size = 100) =>
+    apiClient.get<PagedResponse<BlogPostDto>>(`/blogs/admin?page=${page}&size=${size}`),
+  getBlogPostById: (id: number) =>
+    apiClient.get<BlogPostDto>(`/blogs/${id}`),
+  createBlogPost: (request: BlogPostRequest) =>
+    apiClient.post<BlogPostDto>('/blogs', request),
+  updateBlogPost: (id: number, request: BlogPostRequest) =>
+    apiClient.put<BlogPostDto>(`/blogs/${id}`, request),
+  deleteBlogPost: (id: number) =>
+    apiClient.delete<void>(`/blogs/${id}`),
+  publishBlogPost: (id: number) =>
+    apiClient.post<BlogPostDto>(`/blogs/${id}/publish`, {}),
+  archiveBlogPost: (id: number) =>
+    apiClient.post<BlogPostDto>(`/blogs/${id}/archive`, {}),
+  draftBlogPost: (id: number) =>
+    apiClient.post<BlogPostDto>(`/blogs/${id}/draft`, {}),
 };
 
 export default apiClient;

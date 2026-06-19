@@ -1,10 +1,13 @@
 package com.scholarfinder.notification.controller;
 
+import com.scholarfinder.notification.dto.AdminAlertDto;
 import com.scholarfinder.notification.dto.AlertRequest;
 import com.scholarfinder.notification.dto.AnnouncementRequest;
 import com.scholarfinder.notification.dto.AnnouncementResponse;
 import com.scholarfinder.notification.dto.ApiResponse;
 import com.scholarfinder.notification.dto.AudienceCountsResponse;
+import com.scholarfinder.notification.dto.PagedResponse;
+import com.scholarfinder.notification.service.AdminAlertService;
 import com.scholarfinder.notification.service.AnnouncementService;
 import com.scholarfinder.notification.service.EmailService;
 import jakarta.validation.Valid;
@@ -24,10 +27,14 @@ public class NotificationController {
 
     private final EmailService emailService;
     private final AnnouncementService announcementService;
+    private final AdminAlertService adminAlertService;
 
-    public NotificationController(EmailService emailService, AnnouncementService announcementService) {
+    public NotificationController(EmailService emailService,
+                                  AnnouncementService announcementService,
+                                  AdminAlertService adminAlertService) {
         this.emailService = emailService;
         this.announcementService = announcementService;
+        this.adminAlertService = adminAlertService;
     }
 
     /**
@@ -88,6 +95,16 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<AudienceCountsResponse>> getAudienceCounts(
             @RequestParam(defaultValue = "true") boolean verifiedOnly) {
         return ResponseEntity.ok(ApiResponse.success(announcementService.getAudienceCounts(verifiedOnly)));
+    }
+
+    /**
+     * Get recent alerts for the admin portal bell.
+     */
+    @GetMapping("/admin/alerts")
+    public ResponseEntity<ApiResponse<PagedResponse<AdminAlertDto>>> getAdminAlerts(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(ApiResponse.success(adminAlertService.getRecentAlerts(page, size)));
     }
 
     /**

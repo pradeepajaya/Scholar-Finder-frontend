@@ -74,8 +74,7 @@ export function ContentDetailPage({
 
   return createPortal(
     <div
-      className="fixed inset-0 flex items-start justify-center overflow-y-auto bg-slate-950/70 p-3 pt-20 backdrop-blur-sm md:p-6 md:pt-24"
-      style={{ zIndex: 2147483647 }}
+      className="fixed inset-x-0 bottom-0 top-16 z-40 flex items-start justify-center overflow-y-auto bg-slate-950/70 p-3 backdrop-blur-sm md:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="content-detail-title"
@@ -87,7 +86,7 @@ export function ContentDetailPage({
     >
       <article
         className="relative w-full max-w-5xl overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-2xl"
-        style={{ maxHeight: "calc(100vh - 6rem)" }}
+        style={{ maxHeight: "calc(100vh - 7rem)" }}
       >
         <Button
           type="button"

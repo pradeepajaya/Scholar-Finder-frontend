@@ -151,51 +151,65 @@ public class ApplicationService {
 
     public List<InstitutionApplicationDto> getApplicationsByInstitutionId(Long institutionId) {
         List<Application> applications = applicationRepository.findByInstitutionId(institutionId);
-        
-        return applications.stream().map(app -> {
-            Scholarship scholarship = scholarshipRepository.findById(app.getScholarshipId()).orElse(null);
-            StudentProfile student = studentProfileRepository.findByUserId(app.getStudentId()).orElse(null);
-            Map<String, Object> docs = readApplicationDocuments(app);
-            Map<String, Object> qualifications = readQualifications(docs);
+        return applications.stream()
+            .map(this::toInstitutionApplicationDto)
+            .collect(Collectors.toList());
+    }
 
-            String studentName = firstPresent(
-                stringValue(qualifications.get("fullName")),
-                student != null ? student.getFullName() : null,
-                "Unknown Student"
-            );
-            String studentEmail = firstPresent(stringValue(qualifications.get("email")), "");
-            String studentPhone = firstPresent(
-                stringValue(qualifications.get("phone")),
-                student != null ? student.getMobile() : null,
-                ""
-            );
-            String qualificationSummary = firstPresent(
-                app.getStatementOfPurpose(),
-                stringValue(docs.get("qualificationSummary")),
-                ""
-            );
-            String currentEducation = firstPresent(
-                stringValue(qualifications.get("currentEducation")),
-                stringValue(docs.get("currentEducation")),
-                student != null ? student.getCurrentStatus() : null,
-                ""
-            );
+    public List<InstitutionApplicationDto> getApplicationsByInstitutionUserId(Long institutionUserId) {
+        List<Application> applications = applicationRepository.findByInstitutionUserId(institutionUserId);
+        return applications.stream()
+            .map(this::toInstitutionApplicationDto)
+            .collect(Collectors.toList());
+    }
 
-            return InstitutionApplicationDto.builder()
-                .applicationId(app.getId())
-                .scholarshipId(scholarship != null ? scholarship.getId() : null)
-                .scholarshipTitle(scholarship != null ? scholarship.getTitle() : "Unknown Scholarship")
-                .studentId(app.getStudentId())
-                .studentName(studentName)
-                .studentEmail(studentEmail)
-                .studentPhone(studentPhone)
-                .qualificationSummary(qualificationSummary)
-                .currentEducation(currentEducation)
-                .status(app.getStatus())
-                .appliedAt(app.getCreatedAt())
-                .matchPercentage(app.getMatchScore() != null ? app.getMatchScore().doubleValue() : 0.0)
-                .build();
-        }).collect(Collectors.toList());
+    private InstitutionApplicationDto toInstitutionApplicationDto(Application app) {
+        Scholarship scholarship = scholarshipRepository.findById(app.getScholarshipId()).orElse(null);
+        StudentProfile student = studentProfileRepository.findByUserId(app.getStudentId()).orElse(null);
+        Map<String, Object> docs = readApplicationDocuments(app);
+        Map<String, Object> qualifications = readQualifications(docs);
+
+        String studentName = firstPresent(
+            stringValue(qualifications.get("fullName")),
+            student != null ? student.getFullName() : null,
+            "Unknown Student"
+        );
+        String studentEmail = firstPresent(
+            stringValue(qualifications.get("email")),
+            student != null ? student.getEmail() : null,
+            ""
+        );
+        String studentPhone = firstPresent(
+            stringValue(qualifications.get("phone")),
+            student != null ? student.getMobile() : null,
+            ""
+        );
+        String qualificationSummary = firstPresent(
+            app.getStatementOfPurpose(),
+            stringValue(docs.get("qualificationSummary")),
+            ""
+        );
+        String currentEducation = firstPresent(
+            stringValue(qualifications.get("currentEducation")),
+            stringValue(docs.get("currentEducation")),
+            student != null ? student.getCurrentStatus() : null,
+            ""
+        );
+
+        return InstitutionApplicationDto.builder()
+            .applicationId(app.getId())
+            .scholarshipId(scholarship != null ? scholarship.getId() : null)
+            .scholarshipTitle(scholarship != null ? scholarship.getTitle() : "Unknown Scholarship")
+            .studentId(app.getStudentId())
+            .studentName(studentName)
+            .studentEmail(studentEmail)
+            .studentPhone(studentPhone)
+            .qualificationSummary(qualificationSummary)
+            .currentEducation(currentEducation)
+            .status(app.getStatus())
+            .appliedAt(app.getCreatedAt())
+            .matchPercentage(app.getMatchScore() != null ? app.getMatchScore().doubleValue() : 0.0)
+            .build();
     }
 
     public List<StudentApplicationDto> getApplicationsByStudentId(Long studentId) {

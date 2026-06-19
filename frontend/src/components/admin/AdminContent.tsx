@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -38,6 +38,8 @@ import {
   Eye,
   Calendar,
 } from "lucide-react";
+import { contentApi, NewsRequest, BlogPostRequest } from "../../services/api";
+import { Switch } from "../ui/switch";
 
 interface ContentItem {
   id: number;
@@ -45,72 +47,36 @@ interface ContentItem {
   type: "news" | "blog";
   author: string;
   publishedDate: string;
-  status: "published" | "draft";
+  status: "published" | "draft" | "archived";
   views: number;
   summary: string;
   content: string;
+  featuredImage?: string;
+  imageCaption?: string;
+  imageAlt?: string;
   documentUrl?: string;
+  sourceName?: string;
+  authorBio?: string;
+  authorAvatar?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  metaKeywords?: string;
+  isFeatured?: boolean;
+  isBreaking?: boolean;
+  allowComments?: boolean;
 }
 
-const initialContent: ContentItem[] = [
-  {
-    id: 1,
-    title: "New Scholarship Opportunities for 2026",
-    type: "news",
-    author: "Admin User",
-    publishedDate: "2026-01-15",
-    status: "published",
-    views: 1245,
-    summary:
-      "A roundup of new scholarships opening in 2026 with key deadlines and eligibility.",
-    content:
-      "This update highlights new scholarship opportunities for local and international students. It includes application windows, required documents, and official announcement links. Review eligibility carefully and submit early.",
-    documentUrl: "https://example.com/docs/scholarship-opportunities-2026.pdf",
-  },
-  {
-    id: 2,
-    title: "How to Write a Winning Scholarship Application",
-    type: "blog",
-    author: "Admin User",
-    publishedDate: "2026-01-12",
-    status: "published",
-    views: 987,
-    summary:
-      "Practical tips for writing personal statements, organizing documents, and meeting deadlines.",
-    content:
-      "Strong applications focus on clarity, evidence, and alignment with scholarship goals. This guide covers structuring a personal statement, collecting recommendations, and avoiding common mistakes.",
-  },
-  {
-    id: 3,
-    title: "Tips for A/L Students Seeking Higher Education",
-    type: "blog",
-    author: "Admin User",
-    publishedDate: "2026-01-10",
-    status: "published",
-    views: 1532,
-    summary:
-      "Planning advice for A/L students preparing applications and selecting programs.",
-    content:
-      "Start early by mapping application calendars, shortlisting programs, and preparing documents. Keep a checklist of transcripts, exam results, and ID documents.",
-  },
-  {
-    id: 4,
-    title: "Upcoming Scholarship Deadlines",
-    type: "news",
-    author: "Admin User",
-    publishedDate: "2026-01-08",
-    status: "draft",
-    views: 0,
-    summary:
-      "Draft list of upcoming scholarship deadlines for the next quarter.",
-    content:
-      "This draft compiles upcoming deadlines by region and field of study. Verify dates against official sources before publishing.",
-  },
-];
+const normalizeStatus = (status?: string): ContentItem["status"] => {
+  const normalized = status?.toLowerCase();
+  if (normalized === "published" || normalized === "archived") {
+    return normalized;
+  }
+  return "draft";
+};
 
 export function AdminContent() {
-  const [contentItems, setContentItems] =
-    useState<ContentItem[]>(initialContent);
+  const [contentItems, setContentItems] = useState<ContentItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [viewItem, setViewItem] = useState<ContentItem | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -119,6 +85,70 @@ export function AdminContent() {
   const [deleteItem, setDeleteItem] = useState<ContentItem | null>(null);
 
   const [filterType, setFilterType] = useState<"all" | "news" | "blog">("all");
+
+  const fetchContent = async () => {
+    setIsLoading(true);
+    try {
+      const [newsRes, blogsRes] = await Promise.all([
+        contentApi.getAllNews(0, 100),
+        contentApi.getAllBlogPosts(0, 100)
+      ]);
+
+      const newsItems: ContentItem[] = newsRes.data?.content?.map(news => ({
+        id: news.id,
+        title: news.title,
+        type: "news",
+        author: news.authorName || "Admin User",
+        publishedDate: news.publishedAt || news.createdAt || "",
+        status: normalizeStatus(news.status),
+        views: news.viewsCount || 0,
+        summary: news.summary || "",
+        content: news.content || "",
+        featuredImage: news.featuredImage || "",
+        imageCaption: news.imageCaption || "",
+        documentUrl: news.sourceUrl || "",
+        sourceName: news.sourceName || "",
+        metaTitle: news.metaTitle || "",
+        metaDescription: news.metaDescription || "",
+        isFeatured: Boolean(news.isFeatured),
+        isBreaking: Boolean(news.isBreaking),
+      })) || [];
+
+      const blogItems: ContentItem[] = blogsRes.data?.content?.map(blog => ({
+        id: blog.id,
+        title: blog.title,
+        type: "blog",
+        author: blog.authorName || "Admin User",
+        publishedDate: blog.publishedAt || blog.createdAt || "",
+        status: normalizeStatus(blog.status),
+        views: blog.viewsCount || 0,
+        summary: blog.excerpt || "",
+        content: blog.content || "",
+        featuredImage: blog.featuredImage || "",
+        imageAlt: blog.imageAlt || "",
+        documentUrl: "",
+        authorBio: blog.authorBio || "",
+        authorAvatar: blog.authorAvatar || "",
+        metaTitle: blog.metaTitle || "",
+        metaDescription: blog.metaDescription || "",
+        metaKeywords: blog.metaKeywords || "",
+        isFeatured: Boolean(blog.isFeatured),
+        allowComments: blog.allowComments ?? true,
+      })) || [];
+
+      setContentItems([...newsItems, ...blogItems].sort((a, b) => 
+        new Date(b.publishedDate).getTime() - new Date(a.publishedDate).getTime()
+      ));
+    } catch (error) {
+      console.error("Failed to fetch content", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchContent();
+  }, []);
 
   const filteredContent = useMemo(
     () =>
@@ -153,7 +183,19 @@ export function AdminContent() {
       views: 0,
       summary: "",
       content: "",
+      featuredImage: "",
+      imageCaption: "",
+      imageAlt: "",
       documentUrl: "",
+      sourceName: "",
+      authorBio: "",
+      authorAvatar: "",
+      metaTitle: "",
+      metaDescription: "",
+      metaKeywords: "",
+      isFeatured: false,
+      isBreaking: false,
+      allowComments: true,
     });
     setIsEditOpen(true);
   };
@@ -167,21 +209,86 @@ export function AdminContent() {
     setDraftItem((current) => (current ? { ...current, ...patch } : current));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!draftItem) return;
 
-    setContentItems((items) => {
-      if (draftItem.id === 0) {
-        const nextId = items.length
-          ? Math.max(...items.map((item) => item.id)) + 1
-          : 1;
-        return [...items, { ...draftItem, id: nextId }];
-      }
-      return items.map((item) => (item.id === draftItem.id ? draftItem : item));
-    });
+    try {
+      let savedId = draftItem.id;
 
-    setIsEditOpen(false);
-    setDraftItem(null);
+      if (draftItem.type === "news") {
+        const req: NewsRequest = {
+          title: draftItem.title,
+          summary: draftItem.summary,
+          content: draftItem.content,
+          featuredImage: draftItem.featuredImage,
+          imageCaption: draftItem.imageCaption,
+          authorName: draftItem.author,
+          metaTitle: draftItem.metaTitle,
+          metaDescription: draftItem.metaDescription,
+          isFeatured: draftItem.isFeatured,
+          isBreaking: draftItem.isBreaking,
+          sourceName: draftItem.sourceName,
+          sourceUrl: draftItem.documentUrl,
+        };
+        
+        if (draftItem.id === 0) {
+          const res = await contentApi.createNews(req);
+          if (res.data) savedId = res.data.id;
+        } else {
+          await contentApi.updateNews(draftItem.id, req);
+        }
+
+        if (savedId > 0) {
+           if (draftItem.status === "published") {
+             await contentApi.publishNews(savedId);
+           } else if (draftItem.status === "archived") {
+             await contentApi.archiveNews(savedId);
+           } else {
+             await contentApi.draftNews(savedId);
+           }
+        }
+      } else {
+        const req: BlogPostRequest = {
+          title: draftItem.title,
+          excerpt: draftItem.summary,
+          content: draftItem.content,
+          featuredImage: draftItem.featuredImage,
+          imageAlt: draftItem.imageAlt,
+          authorName: draftItem.author,
+          authorBio: draftItem.authorBio,
+          authorAvatar: draftItem.authorAvatar,
+          metaTitle: draftItem.metaTitle,
+          metaDescription: draftItem.metaDescription,
+          metaKeywords: draftItem.metaKeywords,
+          isFeatured: draftItem.isFeatured,
+          allowComments: draftItem.allowComments,
+        };
+
+        if (draftItem.id === 0) {
+          const res = await contentApi.createBlogPost(req);
+          if (res.data) savedId = res.data.id;
+        } else {
+          await contentApi.updateBlogPost(draftItem.id, req);
+        }
+
+        if (savedId > 0) {
+           if (draftItem.status === "published") {
+             await contentApi.publishBlogPost(savedId);
+           } else if (draftItem.status === "archived") {
+             await contentApi.archiveBlogPost(savedId);
+           } else {
+             await contentApi.draftBlogPost(savedId);
+           }
+        }
+      }
+
+      setIsEditOpen(false);
+      setDraftItem(null);
+      fetchContent();
+    } catch (error) {
+      console.error("Failed to save content", error);
+      alert("Failed to save content. Please check the console for details.");
+    }
   };
 
   const handleDelete = (item: ContentItem) => {
@@ -189,13 +296,21 @@ export function AdminContent() {
     setIsDeleteOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteItem) return;
-    setContentItems((items) =>
-      items.filter((item) => item.id !== deleteItem.id),
-    );
-    setIsDeleteOpen(false);
-    setDeleteItem(null);
+    try {
+      if (deleteItem.type === "news") {
+        await contentApi.deleteNews(deleteItem.id);
+      } else {
+        await contentApi.deleteBlogPost(deleteItem.id);
+      }
+      setIsDeleteOpen(false);
+      setDeleteItem(null);
+      fetchContent();
+    } catch (error) {
+      console.error("Failed to delete content", error);
+      alert("Failed to delete content.");
+    }
   };
 
   return (
@@ -234,101 +349,111 @@ export function AdminContent() {
         ))}
       </div>
 
-      {/* Content List */}
-      <div className="space-y-4">
-        {filteredContent.map((item) => (
-          <Card key={item.id} className="p-6 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-4 flex-1">
-                <button
-                  type="button"
-                  onClick={() => handleView(item)}
-                  className={`p-3 rounded-lg transition-colors hover:opacity-90 ${
-                    item.type === "news" ? "bg-blue-100" : "bg-purple-100"
-                  }`}
-                  aria-label={`View ${item.type} document`}
-                  title="View document"
-                >
-                  {item.type === "news" ? (
-                    <Newspaper className="w-6 h-6 text-blue-600" />
-                  ) : (
-                    <FileText className="w-6 h-6 text-purple-600" />
-                  )}
-                </button>
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-semibold text-slate-900">
-                      {item.title}
-                    </h3>
-                    <Badge
-                      className={
-                        item.status === "published"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-slate-100 text-slate-700"
-                      }
+      {isLoading ? (
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      ) : (
+        <>
+          {/* Content List */}
+          <div className="space-y-4">
+            {filteredContent.map((item) => (
+              <Card key={`${item.type}-${item.id}`} className="p-6 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-4 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => handleView(item)}
+                      className={`p-3 rounded-lg transition-colors hover:opacity-90 ${
+                        item.type === "news" ? "bg-blue-100" : "bg-purple-100"
+                      }`}
+                      aria-label={`View ${item.type} document`}
+                      title="View document"
                     >
-                      {item.status.toUpperCase()}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-slate-600">
-                    <span>By {item.author}</span>
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      <span>
-                        {new Date(item.publishedDate).toLocaleDateString()}
-                      </span>
-                    </div>
-                    {item.status === "published" && (
-                      <div className="flex items-center gap-1">
-                        <Eye className="w-4 h-4" />
-                        <span>{item.views} views</span>
+                      {item.type === "news" ? (
+                        <Newspaper className="w-6 h-6 text-blue-600" />
+                      ) : (
+                        <FileText className="w-6 h-6 text-purple-600" />
+                      )}
+                    </button>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold text-slate-900">
+                          {item.title}
+                        </h3>
+                        <Badge
+                          className={
+                            item.status === "published"
+                              ? "bg-green-100 text-green-700"
+                              : item.status === "draft"
+                              ? "bg-slate-100 text-slate-700"
+                              : "bg-orange-100 text-orange-700"
+                          }
+                        >
+                          {item.status.toUpperCase()}
+                        </Badge>
                       </div>
-                    )}
+                      <div className="flex items-center gap-4 text-sm text-slate-600">
+                        <span>By {item.author}</span>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          <span>
+                            {item.publishedDate ? new Date(item.publishedDate).toLocaleDateString() : 'N/A'}
+                          </span>
+                        </div>
+                        {item.status === "published" && (
+                          <div className="flex items-center gap-1">
+                            <Eye className="w-4 h-4" />
+                            <span>{item.views} views</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleView(item)}
+                      aria-label="View content"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEdit(item)}
+                      aria-label="Edit content"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700"
+                      onClick={() => handleDelete(item)}
+                      aria-label="Delete content"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleView(item)}
-                  aria-label="View content"
-                >
-                  <Eye className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleEdit(item)}
-                  aria-label="Edit content"
-                >
-                  <Edit className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-red-600 hover:text-red-700"
-                  onClick={() => handleDelete(item)}
-                  aria-label="Delete content"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
+              </Card>
+            ))}
+          </div>
 
-      {filteredContent.length === 0 && (
-        <Card className="p-12 text-center">
-          <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-lg font-semibold text-slate-900 mb-1">
-            No Content Found
-          </h3>
-          <p className="text-slate-600">
-            Create your first article or blog post
-          </p>
-        </Card>
+          {filteredContent.length === 0 && (
+            <Card className="p-12 text-center">
+              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <h3 className="text-lg font-semibold text-slate-900 mb-1">
+                No Content Found
+              </h3>
+              <p className="text-slate-600">
+                Create your first article or blog post
+              </p>
+            </Card>
+          )}
+        </>
       )}
 
       <Dialog
@@ -443,6 +568,7 @@ export function AdminContent() {
                     onValueChange={(value: string) =>
                       updateDraft({ type: value as ContentItem["type"] })
                     }
+                    disabled={draftItem.id !== 0}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select type" />
@@ -469,6 +595,7 @@ export function AdminContent() {
                     <SelectContent>
                       <SelectItem value="published">Published</SelectItem>
                       <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -476,14 +603,12 @@ export function AdminContent() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">
-                    Published Date
+                    Published Date (Auto-generated)
                   </label>
                   <Input
-                    type="date"
-                    value={draftItem.publishedDate}
-                    onChange={(event) =>
-                      updateDraft({ publishedDate: event.target.value })
-                    }
+                    type="text"
+                    value={draftItem.publishedDate ? new Date(draftItem.publishedDate).toLocaleDateString() : ''}
+                    disabled
                   />
                 </div>
                 <div className="space-y-2">
@@ -505,6 +630,38 @@ export function AdminContent() {
                   placeholder="Short summary"
                 />
               </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Featured Image URL
+                  </label>
+                  <Input
+                    value={draftItem.featuredImage ?? ""}
+                    onChange={(event) =>
+                      updateDraft({ featuredImage: event.target.value })
+                    }
+                    placeholder="https://example.com/image.jpg"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Image Description
+                  </label>
+                  <Input
+                    value={
+                      draftItem.type === "news"
+                        ? draftItem.imageCaption ?? ""
+                        : draftItem.imageAlt ?? ""
+                    }
+                    onChange={(event) =>
+                      draftItem.type === "news"
+                        ? updateDraft({ imageCaption: event.target.value })
+                        : updateDraft({ imageAlt: event.target.value })
+                    }
+                    placeholder="Short image description"
+                  />
+                </div>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">
                   Content
@@ -517,6 +674,44 @@ export function AdminContent() {
                   placeholder="Full document content"
                   className="min-h-36"
                 />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+                  <span className="text-sm font-medium text-slate-700">
+                    Featured
+                  </span>
+                  <Switch
+                    checked={Boolean(draftItem.isFeatured)}
+                    onCheckedChange={(checked: boolean) =>
+                      updateDraft({ isFeatured: checked })
+                    }
+                  />
+                </label>
+                {draftItem.type === "news" ? (
+                  <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+                    <span className="text-sm font-medium text-slate-700">
+                      Breaking News
+                    </span>
+                    <Switch
+                      checked={Boolean(draftItem.isBreaking)}
+                      onCheckedChange={(checked: boolean) =>
+                        updateDraft({ isBreaking: checked })
+                      }
+                    />
+                  </label>
+                ) : (
+                  <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+                    <span className="text-sm font-medium text-slate-700">
+                      Comments
+                    </span>
+                    <Switch
+                      checked={draftItem.allowComments ?? true}
+                      onCheckedChange={(checked: boolean) =>
+                        updateDraft({ allowComments: checked })
+                      }
+                    />
+                  </label>
+                )}
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">

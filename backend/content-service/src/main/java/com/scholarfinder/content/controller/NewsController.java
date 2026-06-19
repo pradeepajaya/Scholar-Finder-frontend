@@ -51,6 +51,18 @@ public class NewsController {
     }
 
     /**
+     * Get all news for admin management, including drafts and archived articles.
+     */
+    @GetMapping("/admin")
+    public ResponseEntity<ApiResponse<PagedResponse<NewsDto>>> getAllNewsForAdmin(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size) {
+
+        PagedResponse<NewsDto> news = newsService.getAllNewsForAdmin(page, size);
+        return ResponseEntity.ok(ApiResponse.success(news));
+    }
+
+    /**
      * Get news by ID.
      */
     @GetMapping("/{id}")
@@ -166,6 +178,15 @@ public class NewsController {
     public ResponseEntity<ApiResponse<NewsDto>> archiveNews(@PathVariable Long id) {
         NewsDto news = newsService.archiveNews(id);
         return ResponseEntity.ok(ApiResponse.success(news, "News article archived successfully"));
+    }
+
+    /**
+     * Move a news article to draft.
+     */
+    @PostMapping("/{id}/draft")
+    public ResponseEntity<ApiResponse<NewsDto>> draftNews(@PathVariable Long id) {
+        NewsDto news = newsService.draftNews(id);
+        return ResponseEntity.ok(ApiResponse.success(news, "News article moved to draft"));
     }
 
     /**

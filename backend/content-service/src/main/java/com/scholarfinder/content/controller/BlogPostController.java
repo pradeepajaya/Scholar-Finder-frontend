@@ -51,6 +51,18 @@ public class BlogPostController {
     }
 
     /**
+     * Get all blog posts for admin management, including drafts and archived posts.
+     */
+    @GetMapping("/admin")
+    public ResponseEntity<ApiResponse<PagedResponse<BlogPostDto>>> getAllBlogPostsForAdmin(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size) {
+
+        PagedResponse<BlogPostDto> blogPosts = blogPostService.getAllBlogPostsForAdmin(page, size);
+        return ResponseEntity.ok(ApiResponse.success(blogPosts));
+    }
+
+    /**
      * Get blog post by ID.
      */
     @GetMapping("/{id}")
@@ -168,6 +180,15 @@ public class BlogPostController {
     public ResponseEntity<ApiResponse<BlogPostDto>> archiveBlogPost(@PathVariable Long id) {
         BlogPostDto blogPost = blogPostService.archiveBlogPost(id);
         return ResponseEntity.ok(ApiResponse.success(blogPost, "Blog post archived successfully"));
+    }
+
+    /**
+     * Move a blog post to draft.
+     */
+    @PostMapping("/{id}/draft")
+    public ResponseEntity<ApiResponse<BlogPostDto>> draftBlogPost(@PathVariable Long id) {
+        BlogPostDto blogPost = blogPostService.draftBlogPost(id);
+        return ResponseEntity.ok(ApiResponse.success(blogPost, "Blog post moved to draft"));
     }
 
     /**

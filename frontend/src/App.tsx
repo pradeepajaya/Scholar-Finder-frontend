@@ -17,7 +17,7 @@ import { InstitutionLogin } from "./components/InstitutionLogin";
 import { AdminLogin } from "./components/AdminLogin";
 import { InstitutionDashboard } from "./components/InstitutionDashboard";
 import { Toaster } from "sonner";
-import { STUDENT_ID_KEY, tokenService } from "./services/api";
+import { authApi, STUDENT_ID_KEY, tokenService } from "./services/api";
 
 type Page =
   | "home"
@@ -37,6 +37,19 @@ type Page =
   | "institution-dashboard";
 type UserType = "student" | "institution" | "admin";
 
+const studentPortalPages = new Set<Page>([
+  "home",
+  "student-register",
+  "student-login",
+  "matches",
+  "scholarships",
+  "news",
+  "blog",
+  "success-stories",
+  "contact",
+  "profile",
+]);
+
 export default function App() {
   const hasStoredAuth = tokenService.isAuthenticated();
   const storedUser = hasStoredAuth ? tokenService.getUser() : null;
@@ -55,12 +68,20 @@ export default function App() {
     return null;
   });
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setUserType(null);
-    setIsRegistered(false);
-    setCurrentPage("home");
-    tokenService.clearTokens();
+  const handleLogout = async () => {
+    try {
+      if (tokenService.isAuthenticated()) {
+        await authApi.logout();
+      }
+    } catch (error) {
+      console.warn("Logout request failed, clearing local session.", error);
+    } finally {
+      setIsLoggedIn(false);
+      setUserType(null);
+      setIsRegistered(false);
+      setCurrentPage("home");
+      tokenService.clearTokens();
+    }
   };
 
   const handleStudentRegistration = (data: any) => {
@@ -144,25 +165,34 @@ export default function App() {
           <UserProfile onNavigate={(page) => setCurrentPage(page as Page)} />
         );
       case "admin":
-        return <AdminPortal />;
+        return <AdminPortal onLogout={handleLogout} />;
       case "institution-dashboard":
-        return <InstitutionDashboard />;
+        return <InstitutionDashboard onLogout={handleLogout} />;
       default:
         return <HomePage onNavigate={setCurrentPage} />;
     }
   };
 
+  const isStudentPortalPage = studentPortalPages.has(currentPage);
+  const shouldShowStudentNavigation =
+    isStudentPortalPage ||
+    (currentPage !== "admin" &&
+      currentPage !== "institution-dashboard" &&
+      userType !== "institution" &&
+      userType !== "admin");
+  const isStudentSession = isLoggedIn && userType === "student";
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Navigation Bar - Only show for non-institution and non-admin users */}
-      {userType !== "institution" && userType !== "admin" && (
+      {/* Student portal navigation */}
+      {shouldShowStudentNavigation && (
         <Navbar
           currentPage={currentPage}
           onNavigate={setCurrentPage}
-          isLoggedIn={isLoggedIn}
-          isRegistered={isRegistered}
-          userType={userType}
-          onLogout={handleLogout}
+          isLoggedIn={isStudentSession}
+          isRegistered={isRegistered || isStudentSession}
+          userType={isStudentSession ? "student" : null}
+          onLogout={isStudentSession ? handleLogout : undefined}
         />
       )}
 

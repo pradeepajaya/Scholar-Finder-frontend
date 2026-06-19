@@ -50,7 +50,10 @@ public class NewsService {
         mapRequestToEntity(request, news);
         news.setAuthorId(authorId);
         news.setSlug(generateSlug(request.getTitle()));
-        news.setStatus("DRAFT");
+        news.setStatus(Boolean.TRUE.equals(request.getPublish()) ? "PUBLISHED" : "DRAFT");
+        if ("PUBLISHED".equals(news.getStatus())) {
+            news.setPublishedAt(LocalDateTime.now());
+        }
         news.setViewsCount(0);
         
         News saved = newsRepository.save(requireNews(news));
@@ -98,6 +101,16 @@ public class NewsService {
     public PagedResponse<NewsDto> getPublishedNews(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         Page<News> newsPage = newsRepository.findPublished(pageable);
+        return createPagedResponse(newsPage);
+    }
+
+    /**
+     * Get all news with pagination for admin management.
+     */
+    @Transactional(readOnly = true)
+    public PagedResponse<NewsDto> getAllNewsForAdmin(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<News> newsPage = newsRepository.findAllForAdmin(pageable);
         return createPagedResponse(newsPage);
     }
 
@@ -174,8 +187,10 @@ public class NewsService {
         News news = newsRepository.findById(newsId)
             .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
         
+        if (!"PUBLISHED".equals(news.getStatus()) || news.getPublishedAt() == null) {
+            news.setPublishedAt(LocalDateTime.now());
+        }
         news.setStatus("PUBLISHED");
-        news.setPublishedAt(LocalDateTime.now());
         
         News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
@@ -191,6 +206,21 @@ public class NewsService {
         
         news.setStatus("ARCHIVED");
         
+        News saved = newsRepository.save(requireNews(news));
+        return mapToDto(saved);
+    }
+
+    /**
+     * Move a news article back to draft status.
+     */
+    public NewsDto draftNews(Long id) {
+        Long newsId = requireId(id, "News");
+        News news = newsRepository.findById(newsId)
+            .orElseThrow(() -> new EntityNotFoundException("News not found with id: " + id));
+
+        news.setStatus("DRAFT");
+        news.setPublishedAt(null);
+
         News saved = newsRepository.save(requireNews(news));
         return mapToDto(saved);
     }
@@ -239,6 +269,8 @@ public class NewsService {
         news.setSummary(request.getSummary());
         news.setContent(request.getContent());
         news.setFeaturedImage(request.getFeaturedImage());
+        news.setImageCaption(request.getImageCaption());
+        news.setAuthorName(request.getAuthorName());
         news.setSourceName(request.getSourceName());
         news.setSourceUrl(request.getSourceUrl());
         news.setIsFeatured(Boolean.TRUE.equals(request.getIsFeatured()));
@@ -269,7 +301,9 @@ public class NewsService {
         dto.setSummary(news.getSummary());
         dto.setContent(news.getContent());
         dto.setFeaturedImage(news.getFeaturedImage());
+        dto.setImageCaption(news.getImageCaption());
         dto.setAuthorId(news.getAuthorId());
+        dto.setAuthorName(news.getAuthorName());
         dto.setSourceName(news.getSourceName());
         dto.setSourceUrl(news.getSourceUrl());
         dto.setStatus(news.getStatus());

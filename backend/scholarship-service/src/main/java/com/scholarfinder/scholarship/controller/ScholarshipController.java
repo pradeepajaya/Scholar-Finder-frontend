@@ -154,6 +154,28 @@ public class ScholarshipController {
     }
 
     /**
+     * Get all applications for an institution by its auth user ID.
+     *
+     * GET /api/scholarships/institutions/by-user/{userId}/applications
+     */
+    @GetMapping("/institutions/by-user/{userId}/applications")
+    public ResponseEntity<ApiResponse<List<InstitutionApplicationDto>>> getInstitutionApplicationsByUser(
+            @PathVariable Long userId) {
+
+        log.info("Getting applications for institution user {}", userId);
+
+        try {
+            List<InstitutionApplicationDto> applications =
+                applicationService.getApplicationsByInstitutionUserId(userId);
+            return ResponseEntity.ok(ApiResponse.success(applications, "Applications retrieved successfully"));
+        } catch (Exception e) {
+            log.error("Error getting applications by institution user: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to retrieve applications: " + e.getMessage()));
+        }
+    }
+
+    /**
      * Get all active scholarships.
      * 
      * GET /api/scholarships

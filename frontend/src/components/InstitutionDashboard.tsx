@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { Textarea } from './ui/textarea';
 import {
   Building2,
   TrendingUp,
@@ -28,10 +29,18 @@ import {
   MapPin,
   DollarSign,
   ArrowLeft,
+  Loader2,
+  LogOut,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PostScholarshipForm } from './PostScholarshipForm';
-import { notificationApi } from '../services/api';
+import {
+  AnnouncementRecipient,
+  InstitutionApplicationResponse,
+  notificationApi,
+  scholarshipApi,
+  tokenService,
+} from '../services/api';
 
 type TabType = 'overview' | 'scholarships' | 'candidates' | 'analytics' | 'announcements';
 type CandidateStatus = 'pending' | 'shortlisted' | 'selected' | 'rejected';
@@ -40,9 +49,14 @@ type InstitutionBulkRecipientGroup = 'all' | 'shortlisted' | 'selected' | 'rejec
 type InstitutionAnnouncementTemplate =
   | 'selection'
   | 'shortlist'
+  | 'rejection'
   | 'received'
   | 'deadline'
   | 'custom';
+
+type InstitutionDashboardProps = {
+  onLogout?: () => void | Promise<void>;
+};
 
 type Candidate = {
   id: number;
@@ -57,6 +71,100 @@ type Candidate = {
   status: CandidateStatus;
   appliedDate: string;
   level: string;
+};
+
+type CandidateSource = 'sample' | 'real';
+
+type BulkAnnouncementRecipientSummary = {
+  candidates: Candidate[];
+  recipients: AnnouncementRecipient[];
+  invalidCandidates: Candidate[];
+  duplicateCount: number;
+};
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+const toCandidateStatus = (status?: string): CandidateStatus => {
+  const normalizedStatus = (status || '').trim().toUpperCase();
+
+  if (['SHORTLISTED', 'SHORTLIST'].includes(normalizedStatus)) {
+    return 'shortlisted';
+  }
+
+  if (['ACCEPTED', 'APPROVED', 'SELECTED'].includes(normalizedStatus)) {
+    return 'selected';
+  }
+
+  if (['REJECTED', 'DECLINED', 'DENIED'].includes(normalizedStatus)) {
+    return 'rejected';
+  }
+
+  return 'pending';
+};
+
+const formatApplicationDate = (value?: string) => {
+  if (!value) return 'N/A';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'N/A';
+
+  return date.toISOString().slice(0, 10);
+};
+
+const mapApplicationToCandidate = (
+  application: InstitutionApplicationResponse,
+): Candidate => ({
+  id: application.applicationId,
+  name: application.studentName || `Student #${application.studentId}`,
+  email: application.studentEmail || '',
+  phone: application.studentPhone || 'Not provided',
+  location: 'Not provided',
+  scholarship: application.scholarshipTitle || 'Unknown Scholarship',
+  matchScore: Math.round(application.matchPercentage ?? 0),
+  gpa: 0,
+  alResults: 'N/A',
+  status: toCandidateStatus(application.status),
+  appliedDate: formatApplicationDate(application.appliedAt),
+  level: application.currentEducation || 'N/A',
+});
+
+const buildBulkRecipientSummary = (
+  candidates: Candidate[],
+): BulkAnnouncementRecipientSummary => {
+  const recipientsByEmail = new Map<string, AnnouncementRecipient>();
+  const invalidCandidates: Candidate[] = [];
+
+  candidates.forEach((candidate) => {
+    const normalizedEmail = normalizeEmail(candidate.email);
+
+    if (!normalizedEmail || !EMAIL_PATTERN.test(normalizedEmail)) {
+      invalidCandidates.push(candidate);
+      return;
+    }
+
+    if (!recipientsByEmail.has(normalizedEmail)) {
+      recipientsByEmail.set(normalizedEmail, {
+        email: normalizedEmail,
+        name: candidate.name,
+      });
+    }
+  });
+
+  const recipients = Array.from(recipientsByEmail.values());
+  const duplicateCount = Math.max(
+    0,
+    candidates.length - recipients.length - invalidCandidates.length,
+  );
+
+  return {
+    candidates,
+    recipients,
+    invalidCandidates,
+    duplicateCount,
+  };
 };
 
 const candidateTestEmail = (candidateId: number) =>
@@ -114,6 +222,38 @@ type RequirementCheck = {
   matched: boolean;
   evidence: string;
 };
+
+const analyticsStatusConfig: Array<{
+  status: CandidateStatus;
+  label: string;
+  barClassName: string;
+}> = [
+  { status: 'pending', label: 'Pending Review', barClassName: 'bg-slate-500' },
+  { status: 'shortlisted', label: 'Shortlisted', barClassName: 'bg-blue-500' },
+  { status: 'selected', label: 'Selected', barClassName: 'bg-green-500' },
+  { status: 'rejected', label: 'Rejected', barClassName: 'bg-red-500' },
+];
+
+const parseAppliedDate = (value?: string) => {
+  if (!value || value === 'N/A') return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
+
+const formatPercent = (value: number) => {
+  if (!Number.isFinite(value)) return '0%';
+
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
+};
+
+const formatAnalyticsDateLabel = (date: Date, periodDays: number) =>
+  periodDays <= 30
+    ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    : date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
 
 // Mock data for scholarships
 const mockScholarships: Scholarship[] = [
@@ -739,15 +879,76 @@ const candidateStatusLabels: Record<CandidateStatus, string> = {
   rejected: 'rejected',
 };
 
-export function InstitutionDashboard() {
+const candidateAnnouncementLabels: Record<CandidateStatus, string> = {
+  pending: 'Application Update',
+  shortlisted: 'Shortlist Email',
+  selected: 'Selection Email',
+  rejected: 'Rejection Email',
+};
+
+const canSendCandidateAnnouncement = (status: CandidateStatus) =>
+  status === 'shortlisted' || status === 'selected' || status === 'rejected';
+
+const getAnnouncementButtonClass = (status: CandidateStatus) => {
+  if (status === 'shortlisted') {
+    return 'bg-blue-600 hover:bg-blue-700 text-white';
+  }
+
+  if (status === 'rejected') {
+    return 'bg-red-600 hover:bg-red-700 text-white';
+  }
+
+  return 'bg-green-600 hover:bg-green-700 text-white';
+};
+
+const buildCandidateAnnouncementContent = (candidate: Candidate) => {
+  if (candidate.status === 'shortlisted') {
+    return {
+      label: candidateAnnouncementLabels.shortlisted,
+      successMessage: `Shortlist announcement sent to ${candidate.name}.`,
+      failureMessage: `Could not send the shortlist email to ${candidate.name}.`,
+      subject: `Shortlist update - ${candidate.scholarship}`,
+      message:
+        `You have been shortlisted for ${candidate.scholarship}.\n\n` +
+        'Our institution team will contact you with the next review steps and any required interview or document instructions.',
+    };
+  }
+
+  if (candidate.status === 'rejected') {
+    return {
+      label: candidateAnnouncementLabels.rejected,
+      successMessage: `Rejection announcement sent to ${candidate.name}.`,
+      failureMessage: `Could not send the rejection email to ${candidate.name}.`,
+      subject: `Application outcome - ${candidate.scholarship}`,
+      message:
+        `Thank you for applying for ${candidate.scholarship}.\n\n` +
+        'After careful review, your application has not been selected for this round. We appreciate the time you invested and encourage you to continue applying for suitable opportunities.',
+    };
+  }
+
+  return {
+    label: candidateAnnouncementLabels.selected,
+    successMessage: `Selection announcement sent to ${candidate.name}.`,
+    failureMessage: `Could not send the selection email to ${candidate.name}.`,
+    subject: `Selection announcement - ${candidate.scholarship}`,
+    message:
+      `Congratulations. You have been selected for ${candidate.scholarship}.\n\n` +
+      'Our institution team will contact you with the next steps and required confirmation details.',
+  };
+};
+
+export function InstitutionDashboard({ onLogout }: InstitutionDashboardProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [scholarships, setScholarships] = useState<Scholarship[]>(mockScholarships);
   const [candidates, setCandidates] = useState<Candidate[]>(
     mockCandidates.map(withDeliverableCandidateEmail),
   );
+  const [candidateSource, setCandidateSource] = useState<CandidateSource>('sample');
+  const [isLoadingInstitutionApplications, setIsLoadingInstitutionApplications] =
+    useState(false);
   const [selectedScholarship, setSelectedScholarship] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [timePeriod, setTimePeriod] = useState('30');
+  const [timePeriod, setTimePeriod] = useState('all');
   const [editingScholarshipId, setEditingScholarshipId] = useState<number | null>(null);
   const [scholarshipDraft, setScholarshipDraft] = useState<Scholarship | null>(null);
   const [selectedScholarshipDetail, setSelectedScholarshipDetail] = useState<number | null>(null);
@@ -760,7 +961,106 @@ export function InstitutionDashboard() {
   const [bulkScholarship, setBulkScholarship] = useState('all');
   const [bulkTemplate, setBulkTemplate] =
     useState<InstitutionAnnouncementTemplate>('selection');
+  const [bulkCustomSubject, setBulkCustomSubject] = useState('');
+  const [bulkCustomMessage, setBulkCustomMessage] = useState('');
   const [isSendingBulkAnnouncement, setIsSendingBulkAnnouncement] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  useEffect(() => {
+    const currentUser = tokenService.getUser();
+
+    if (currentUser?.role !== 'INSTITUTION') {
+      return;
+    }
+
+    let ignore = false;
+
+    const loadInstitutionApplications = async () => {
+      setIsLoadingInstitutionApplications(true);
+
+      try {
+        const response = await scholarshipApi.getInstitutionApplicationsByUser(
+          currentUser.id,
+        );
+        const applications = response.data ?? [];
+
+        if (ignore || applications.length === 0) {
+          return;
+        }
+
+        const realCandidates = applications.map(mapApplicationToCandidate);
+        setCandidates(realCandidates);
+        setCandidateSource('real');
+
+        setScholarships((currentScholarships) => {
+          const mergedByTitle = new Map(
+            currentScholarships.map((scholarship) => [scholarship.title, scholarship]),
+          );
+
+          applications.forEach((application) => {
+            const title = application.scholarshipTitle || 'Unknown Scholarship';
+            const existing = mergedByTitle.get(title);
+            const applicantCount = applications.filter(
+              (item) => (item.scholarshipTitle || 'Unknown Scholarship') === title,
+            ).length;
+
+            mergedByTitle.set(title, {
+              id: application.scholarshipId ?? application.applicationId,
+              title,
+              status: existing?.status ?? 'active',
+              deadline: existing?.deadline ?? 'N/A',
+              applicants: applicantCount,
+              shortlisted: realCandidates.filter(
+                (candidate) =>
+                  candidate.scholarship === title &&
+                  candidate.status === 'shortlisted',
+              ).length,
+              selected: realCandidates.filter(
+                (candidate) =>
+                  candidate.scholarship === title &&
+                  candidate.status === 'selected',
+              ).length,
+              amount: existing?.amount ?? 'N/A',
+              duration: existing?.duration ?? 'N/A',
+              level: existing?.level ?? 'N/A',
+            });
+          });
+
+          return Array.from(mergedByTitle.values());
+        });
+      } catch (error) {
+        if (!ignore) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Could not load institution applications.',
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoadingInstitutionApplications(false);
+        }
+      }
+    };
+
+    loadInstitutionApplications();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const handleInstitutionLogout = async () => {
+    if (!onLogout || isLoggingOut) return;
+
+    setIsLoggingOut(true);
+
+    try {
+      await onLogout();
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   const handleStartScholarshipEdit = (scholarship: Scholarship) => {
     setEditingScholarshipId(scholarship.id);
@@ -896,6 +1196,19 @@ export function InstitutionDashboard() {
     const candidate = candidates.find((item) => item.id === candidateId);
     if (!candidate) return;
 
+    if (!canSendCandidateAnnouncement(candidate.status)) {
+      toast.info('Move the candidate to shortlisted, selected, or rejected before sending an outcome email.');
+      return;
+    }
+
+    const candidateEmail = normalizeEmail(candidate.email);
+    if (!EMAIL_PATTERN.test(candidateEmail)) {
+      toast.error(`Add a valid email address for ${candidate.name} before sending.`);
+      return;
+    }
+
+    const content = buildCandidateAnnouncementContent(candidate);
+
     setActiveReviewAction((previous) => ({
       ...previous,
       [candidateId]: 'announcement',
@@ -904,47 +1217,65 @@ export function InstitutionDashboard() {
     try {
       const response = await notificationApi.sendAnnouncement({
         recipientGroup: 'CUSTOM',
-        recipientEmails: [candidate.email],
-        subject: `Selection announcement - ${candidate.scholarship}`,
-        message: [
-          `Dear ${candidate.name},`,
-          '',
-          `Congratulations. You have been selected for ${candidate.scholarship}.`,
-          'Our institution team will contact you with the next steps and required confirmation details.',
-          '',
-          'Best regards,',
-          'University of Colombo',
-        ].join('\n'),
+        recipients: [{ email: candidateEmail, name: candidate.name }],
+        subject: content.subject,
+        message: content.message,
       });
 
       if (!response.success || response.data.failedCount > 0) {
         toast.error(
           response.data.failures[0]?.errorMessage ||
           response.message ||
-          `Could not send the selection email to ${candidate.name}.`,
+          content.failureMessage,
         );
         return;
       }
 
-      toast.success(`Selection announcement sent to ${candidate.name}.`);
+      toast.success(content.successMessage);
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : `Could not send the selection email to ${candidate.name}.`,
+          : content.failureMessage,
       );
     }
   };
 
-  const getBulkAnnouncementCandidates = () =>
-    candidates.filter((candidate) => {
-      const matchesScholarship =
-        bulkScholarship === 'all' || candidate.scholarship === bulkScholarship;
-      const matchesStatus =
-        bulkRecipientGroup === 'all' || candidate.status === bulkRecipientGroup;
+  const handleBulkRecipientGroupChange = (nextGroup: InstitutionBulkRecipientGroup) => {
+    setBulkRecipientGroup(nextGroup);
 
-      return matchesScholarship && matchesStatus;
-    });
+    if (bulkTemplate === 'custom') {
+      return;
+    }
+
+    if (nextGroup === 'rejected') {
+      setBulkTemplate('rejection');
+    } else if (nextGroup === 'shortlisted' && bulkTemplate === 'selection') {
+      setBulkTemplate('shortlist');
+    } else if (nextGroup === 'selected' && bulkTemplate === 'rejection') {
+      setBulkTemplate('selection');
+    } else if (nextGroup === 'all' && bulkTemplate === 'rejection') {
+      setBulkTemplate('received');
+    }
+  };
+
+  const bulkAnnouncementCandidates = useMemo(
+    () =>
+      candidates.filter((candidate) => {
+        const matchesScholarship =
+          bulkScholarship === 'all' || candidate.scholarship === bulkScholarship;
+        const matchesStatus =
+          bulkRecipientGroup === 'all' || candidate.status === bulkRecipientGroup;
+
+        return matchesScholarship && matchesStatus;
+      }),
+    [bulkRecipientGroup, bulkScholarship, candidates],
+  );
+
+  const bulkAnnouncementSummary = useMemo(
+    () => buildBulkRecipientSummary(bulkAnnouncementCandidates),
+    [bulkAnnouncementCandidates],
+  );
 
   const buildBulkAnnouncementContent = (recipientCount: number) => {
     const scholarshipName =
@@ -957,63 +1288,90 @@ export function InstitutionDashboard() {
     if (bulkTemplate === 'shortlist') {
       return {
         subject: `Shortlist update - ${scholarshipName}`,
-        message: `Dear candidate,\n\nYou have been shortlisted for ${scholarshipName}. Our institution team will contact you with the next review steps.\n\nThis message was sent to ${recipientCount} ${audienceLabel}.\n\nBest regards,\nUniversity of Colombo`,
+        message: `You have been shortlisted for ${scholarshipName}. Our institution team will contact you with the next review steps.\n\nThis update is being sent to ${recipientCount} ${audienceLabel}.`,
       };
     }
 
     if (bulkTemplate === 'received') {
       return {
         subject: `Application received - ${scholarshipName}`,
-        message: `Dear candidate,\n\nWe have received your application for ${scholarshipName}. Please monitor your email for review updates and document requests.\n\nThis message was sent to ${recipientCount} ${audienceLabel}.\n\nBest regards,\nUniversity of Colombo`,
+        message: `We have received your application for ${scholarshipName}. Please monitor your email for review updates and document requests.\n\nThis update is being sent to ${recipientCount} ${audienceLabel}.`,
+      };
+    }
+
+    if (bulkTemplate === 'rejection') {
+      return {
+        subject: `Application outcome - ${scholarshipName}`,
+        message: `Thank you for applying for ${scholarshipName}.\n\nAfter careful review, your application has not been selected for this round. We appreciate the time you invested and encourage you to continue applying for suitable opportunities.\n\nThis update is being sent to ${recipientCount} ${audienceLabel}.`,
       };
     }
 
     if (bulkTemplate === 'deadline') {
       return {
         subject: `Deadline reminder - ${scholarshipName}`,
-        message: `Dear candidate,\n\nThis is a reminder to complete all pending requirements for ${scholarshipName} before the published deadline.\n\nThis message was sent to ${recipientCount} ${audienceLabel}.\n\nBest regards,\nUniversity of Colombo`,
+        message: `This is a reminder to complete all pending requirements for ${scholarshipName} before the published deadline.\n\nThis update is being sent to ${recipientCount} ${audienceLabel}.`,
       };
     }
 
     if (bulkTemplate === 'custom') {
       return {
-        subject: `Scholarship update - ${scholarshipName}`,
-        message: `Dear candidate,\n\nThere is an update regarding ${scholarshipName}. Please check your Scholar Finder profile and email for further details.\n\nThis message was sent to ${recipientCount} ${audienceLabel}.\n\nBest regards,\nUniversity of Colombo`,
+        subject: bulkCustomSubject.trim(),
+        message: bulkCustomMessage.trim(),
       };
     }
 
     return {
       subject: `Selection announcement - ${scholarshipName}`,
-      message: `Dear candidate,\n\nSelection updates are now available for ${scholarshipName}. Selected candidates will receive next-step instructions from our institution team.\n\nThis message was sent to ${recipientCount} ${audienceLabel}.\n\nBest regards,\nUniversity of Colombo`,
+      message: `Selection updates are now available for ${scholarshipName}. Selected candidates will receive next-step instructions from our institution team.\n\nThis update is being sent to ${recipientCount} ${audienceLabel}.`,
     };
   };
 
   const handleBulkAnnouncement = async () => {
-    const recipients = Array.from(
-      new Set(getBulkAnnouncementCandidates().map((candidate) => candidate.email)),
-    );
+    const { recipients, invalidCandidates } = bulkAnnouncementSummary;
 
     if (recipients.length === 0) {
-      toast.error('No candidates match the selected announcement filters.');
+      toast.error('No valid recipient emails match the selected announcement filters.');
+      return;
+    }
+
+    if (invalidCandidates.length > 0) {
+      const preview = invalidCandidates
+        .slice(0, 3)
+        .map((candidate) => candidate.name)
+        .join(', ');
+      toast.error(
+        `Fix missing or invalid emails for ${invalidCandidates.length} candidate(s): ${preview}`,
+      );
       return;
     }
 
     const content = buildBulkAnnouncementContent(recipients.length);
+
+    if (!content.subject || !content.message) {
+      toast.error('Add a subject and message before sending the custom announcement.');
+      return;
+    }
 
     setIsSendingBulkAnnouncement(true);
 
     try {
       const response = await notificationApi.sendAnnouncement({
         recipientGroup: 'CUSTOM',
-        recipientEmails: recipients,
+        recipients,
         subject: content.subject,
         message: content.message,
       });
 
       if (!response.success || response.data.failedCount > 0) {
+        const failurePreview = response.data.failures
+          .slice(0, 3)
+          .map((failure) => `${failure.recipientEmail}: ${failure.errorMessage || failure.status}`)
+          .join('; ');
         toast.error(
-          response.message ||
-          `Sent ${response.data.sentCount}; ${response.data.failedCount} failed.`,
+          failurePreview
+            ? `${response.message} ${failurePreview}`
+            : response.message ||
+              `Sent ${response.data.sentCount}; ${response.data.failedCount} failed.`,
         );
         return;
       }
@@ -1093,6 +1451,222 @@ export function InstitutionDashboard() {
           ),
       )
       : [];
+
+  const analyticsData = useMemo(() => {
+    const selectedPeriodDays =
+      timePeriod === 'all' ? null : Number.parseInt(timePeriod, 10) || 30;
+    const now = new Date();
+    const datedCandidates = candidates.map((candidate) => ({
+      candidate,
+      appliedAt: parseAppliedDate(candidate.appliedDate),
+    }));
+    const datedApplications = datedCandidates.filter(
+      (entry): entry is { candidate: Candidate; appliedAt: Date } =>
+        Boolean(entry.appliedAt),
+    );
+    const firstApplicationDate = datedApplications.reduce<Date | null>(
+      (earliest, { appliedAt }) =>
+        !earliest || appliedAt < earliest ? appliedAt : earliest,
+      null,
+    );
+    const lastApplicationDate = datedApplications.reduce<Date | null>(
+      (latest, { appliedAt }) =>
+        !latest || appliedAt > latest ? appliedAt : latest,
+      null,
+    );
+    const periodLengthMs = selectedPeriodDays ? selectedPeriodDays * DAY_IN_MS : 0;
+    const periodStart = selectedPeriodDays
+      ? new Date(now.getTime() - periodLengthMs)
+      : firstApplicationDate;
+    const previousPeriodStart =
+      selectedPeriodDays && periodStart
+        ? new Date(periodStart.getTime() - periodLengthMs)
+        : null;
+
+    const periodCandidates = selectedPeriodDays
+      ? datedApplications.filter(
+        ({ appliedAt }) =>
+          periodStart && appliedAt >= periodStart && appliedAt <= now,
+      )
+      : datedApplications;
+    const previousPeriodCandidates =
+      selectedPeriodDays && previousPeriodStart && periodStart
+        ? datedApplications.filter(
+          ({ appliedAt }) =>
+            appliedAt >= previousPeriodStart && appliedAt < periodStart,
+        )
+        : [];
+    const totalApplicants = candidates.length;
+    const periodApplicantCount =
+      selectedPeriodDays === null ? totalApplicants : periodCandidates.length;
+    const statusCounts = analyticsStatusConfig.reduce(
+      (counts, { status }) => ({
+        ...counts,
+        [status]: candidates.filter((candidate) => candidate.status === status).length,
+      }),
+      {
+        pending: 0,
+        shortlisted: 0,
+        selected: 0,
+        rejected: 0,
+      } as Record<CandidateStatus, number>,
+    );
+    const averageMatchScore = totalApplicants
+      ? candidates.reduce((total, candidate) => total + candidate.matchScore, 0) /
+      totalApplicants
+      : 0;
+    const applicationChangePercent = previousPeriodCandidates.length
+      ? ((periodCandidates.length - previousPeriodCandidates.length) /
+        previousPeriodCandidates.length) *
+      100
+      : selectedPeriodDays && periodCandidates.length > 0
+        ? 100
+        : 0;
+    const applicationChangeLabel =
+      selectedPeriodDays === null
+        ? `${periodApplicantCount} applicants in total`
+        : previousPeriodCandidates.length > 0
+        ? `${formatPercent(applicationChangePercent)} vs previous period`
+        : periodCandidates.length > 0
+          ? `${periodCandidates.length} more than previous period`
+          : 'No applications in the previous period';
+    const periodLabel =
+      selectedPeriodDays === null ? 'All time' : `Last ${selectedPeriodDays} days`;
+    const periodMetricTitle =
+      selectedPeriodDays === null ? 'Applicants on Record' : 'New Applications';
+    const shouldShowHistoricalChart =
+      selectedPeriodDays !== null &&
+      periodCandidates.length === 0 &&
+      datedApplications.length > 0;
+    const chartApplications = shouldShowHistoricalChart
+      ? datedApplications
+      : periodCandidates;
+    const chartStart =
+      shouldShowHistoricalChart || selectedPeriodDays === null
+        ? firstApplicationDate ?? now
+        : periodStart ?? now;
+    const chartEndCandidate =
+      shouldShowHistoricalChart || selectedPeriodDays === null
+        ? lastApplicationDate ?? now
+        : now;
+    const chartEnd =
+      chartEndCandidate.getTime() <= chartStart.getTime()
+        ? new Date(chartStart.getTime() + DAY_IN_MS)
+        : chartEndCandidate;
+    const chartPeriodDays = Math.max(
+      1,
+      Math.ceil((chartEnd.getTime() - chartStart.getTime()) / DAY_IN_MS),
+    );
+    const chartLabel =
+      shouldShowHistoricalChart || selectedPeriodDays === null
+        ? 'All available application history'
+        : periodLabel;
+    const chartEmptyMessage = shouldShowHistoricalChart
+      ? 'Showing all available application history because the selected period has no applications.'
+      : 'No applications were submitted in the selected period.';
+    const bucketCount = chartPeriodDays <= 7 ? 7 : chartPeriodDays <= 180 ? 6 : 12;
+    const bucketLengthMs =
+      Math.max(DAY_IN_MS, chartEnd.getTime() - chartStart.getTime()) / bucketCount;
+    const applicationBuckets = Array.from({ length: bucketCount }, (_, index) => {
+      const bucketStart = new Date(chartStart.getTime() + bucketLengthMs * index);
+      const bucketEnd =
+        index === bucketCount - 1
+          ? chartEnd
+          : new Date(chartStart.getTime() + bucketLengthMs * (index + 1));
+      const count = chartApplications.filter(
+        ({ appliedAt }) =>
+          appliedAt >= bucketStart &&
+          (index === bucketCount - 1 ? appliedAt <= bucketEnd : appliedAt < bucketEnd),
+      ).length;
+
+      return {
+        label: formatAnalyticsDateLabel(bucketStart, chartPeriodDays),
+        count,
+      };
+    });
+    const maxBucketCount = Math.max(...applicationBuckets.map((bucket) => bucket.count), 1);
+    const scholarshipSummaryMap = candidates.reduce((summaryByScholarship, candidate) => {
+        const existing =
+          summaryByScholarship.get(candidate.scholarship) ?? {
+            title: candidate.scholarship,
+            applications: 0,
+            shortlisted: 0,
+            selected: 0,
+            rejected: 0,
+            matchScoreTotal: 0,
+          };
+
+        existing.applications += 1;
+        existing.matchScoreTotal += candidate.matchScore;
+
+        if (candidate.status === 'shortlisted') existing.shortlisted += 1;
+        if (candidate.status === 'selected') existing.selected += 1;
+        if (candidate.status === 'rejected') existing.rejected += 1;
+
+        summaryByScholarship.set(candidate.scholarship, existing);
+        return summaryByScholarship;
+      }, new Map<string, {
+        title: string;
+        applications: number;
+        shortlisted: number;
+        selected: number;
+        rejected: number;
+        matchScoreTotal: number;
+      }>());
+    const scholarshipSummaries = Array.from(scholarshipSummaryMap.values())
+      .map((summary) => ({
+        ...summary,
+        averageMatchScore: summary.applications
+          ? summary.matchScoreTotal / summary.applications
+          : 0,
+        selectionRate: summary.applications
+          ? (summary.selected / summary.applications) * 100
+          : 0,
+      }))
+      .sort(
+        (first, second) =>
+          second.applications - first.applications ||
+          second.selected - first.selected ||
+          second.averageMatchScore - first.averageMatchScore,
+      )
+      .slice(0, 5);
+    const statusRows = analyticsStatusConfig.map((config) => {
+      const count = statusCounts[config.status];
+
+      return {
+        ...config,
+        count,
+        percentage: totalApplicants ? (count / totalApplicants) * 100 : 0,
+      };
+    });
+
+    return {
+      periodLabel,
+      periodMetricTitle,
+      totalApplicants,
+      periodApplicants: periodApplicantCount,
+      applicationChangeLabel,
+      applicationBuckets,
+      maxBucketCount,
+      chartLabel,
+      chartEmptyMessage,
+      isShowingHistoricalFallback: shouldShowHistoricalChart,
+      hasChartApplications: chartApplications.length > 0,
+      averageMatchScore,
+      highMatchApplicants: candidates.filter((candidate) => candidate.matchScore >= 85).length,
+      activeScholarships: scholarships.filter((scholarship) => scholarship.status === 'active').length,
+      statusCounts,
+      statusRows,
+      scholarshipSummaries,
+      selectionRate: totalApplicants ? (statusCounts.selected / totalApplicants) * 100 : 0,
+      reviewCompletionRate: totalApplicants
+        ? ((statusCounts.shortlisted + statusCounts.selected + statusCounts.rejected) /
+          totalApplicants) *
+        100
+        : 0,
+      periodShare: totalApplicants ? (periodApplicantCount / totalApplicants) * 100 : 0,
+    };
+  }, [candidates, scholarships, timePeriod]);
 
   const decisionRecommendation = !selectedCandidate
     ? ''
@@ -1860,14 +2434,14 @@ export function InstitutionDashboard() {
                   View Full Profile
                 </Button>
 
-                {candidate.status === 'selected' && (
+                {canSendCandidateAnnouncement(candidate.status) && (
                   <Button
                     size="sm"
-                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                    className={`w-full ${getAnnouncementButtonClass(candidate.status)}`}
                     onClick={() => handleAnnouncement(candidate.id)}
                   >
                     <Send className="w-4 h-4 mr-2" />
-                    Send Announcement
+                    Send {candidateAnnouncementLabels[candidate.status]}
                   </Button>
                 )}
               </div>
@@ -1881,12 +2455,20 @@ export function InstitutionDashboard() {
   const renderAnalytics = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-900">Analytics & Insights</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Analytics & Insights</h2>
+          <p className="text-sm text-slate-600">
+            {candidateSource === 'real'
+              ? 'Using real institution application records'
+              : 'Using sample candidates until institution applications are available'}
+          </p>
+        </div>
         <select
           value={timePeriod}
           onChange={(e) => setTimePeriod(e.target.value)}
           className="px-4 py-2 border border-slate-300 rounded-lg text-sm"
         >
+          <option value="all">All Time</option>
           <option value="7">Last 7 Days</option>
           <option value="30">Last 30 Days</option>
           <option value="90">Last 3 Months</option>
@@ -1898,13 +2480,20 @@ export function InstitutionDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-slate-900">Application Rate</h3>
+            <h3 className="font-semibold text-slate-900">{analyticsData.periodMetricTitle}</h3>
             <TrendingUp className="w-5 h-5 text-green-600" />
           </div>
-          <p className="text-3xl font-bold text-slate-900 mb-2">+24%</p>
-          <p className="text-sm text-slate-600">Compared to previous period</p>
+          <p className="text-3xl font-bold text-slate-900 mb-2">
+            {analyticsData.periodApplicants}
+          </p>
+          <p className="text-sm text-slate-600">
+            {analyticsData.applicationChangeLabel}
+          </p>
           <div className="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-green-500 rounded-full" style={{ width: '75%' }}></div>
+            <div
+              className="h-full bg-green-500 rounded-full"
+              style={{ width: `${clampPercent(analyticsData.periodShare)}%` }}
+            ></div>
           </div>
         </Card>
 
@@ -1913,10 +2502,17 @@ export function InstitutionDashboard() {
             <h3 className="font-semibold text-slate-900">Average Match Score</h3>
             <BarChart3 className="w-5 h-5 text-blue-600" />
           </div>
-          <p className="text-3xl font-bold text-slate-900 mb-2">87.5%</p>
-          <p className="text-sm text-slate-600">Quality of applicants</p>
+          <p className="text-3xl font-bold text-slate-900 mb-2">
+            {formatPercent(analyticsData.averageMatchScore)}
+          </p>
+          <p className="text-sm text-slate-600">
+            {analyticsData.highMatchApplicants} applicants at 85%+ match
+          </p>
           <div className="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-blue-500 rounded-full" style={{ width: '87.5%' }}></div>
+            <div
+              className="h-full bg-blue-500 rounded-full"
+              style={{ width: `${clampPercent(analyticsData.averageMatchScore)}%` }}
+            ></div>
           </div>
         </Card>
 
@@ -1925,81 +2521,123 @@ export function InstitutionDashboard() {
             <h3 className="font-semibold text-slate-900">Selection Rate</h3>
             <Award className="w-5 h-5 text-purple-600" />
           </div>
-          <p className="text-3xl font-bold text-slate-900 mb-2">3.4%</p>
-          <p className="text-sm text-slate-600">Candidates selected</p>
+          <p className="text-3xl font-bold text-slate-900 mb-2">
+            {formatPercent(analyticsData.selectionRate)}
+          </p>
+          <p className="text-sm text-slate-600">
+            {analyticsData.statusCounts.selected} selected from {analyticsData.totalApplicants} applicants
+          </p>
           <div className="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-purple-500 rounded-full" style={{ width: '34%' }}></div>
+            <div
+              className="h-full bg-purple-500 rounded-full"
+              style={{ width: `${clampPercent(analyticsData.selectionRate)}%` }}
+            ></div>
           </div>
         </Card>
       </div>
 
       <Card className="p-6">
-        <h3 className="font-semibold text-slate-900 mb-4">Applications Over Time</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-slate-900">Applications Over Time</h3>
+          <p className="text-sm text-slate-600">
+            {analyticsData.chartLabel}
+          </p>
+        </div>
         <div className="h-64 flex items-end justify-between gap-2">
-          {[45, 62, 58, 73, 85, 92, 78, 95, 110, 98, 115, 103].map((value, index) => (
-            <div key={index} className="flex-1 flex flex-col items-center gap-2">
-              <div className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-lg transition-all hover:from-blue-700 hover:to-blue-500" style={{ height: `${(value / 120) * 100}%` }}></div>
-              <p className="text-xs text-slate-600">
-                {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][index]}
+          {analyticsData.applicationBuckets.map((bucket, index) => (
+            <div key={`${bucket.label}-${index}`} className="flex-1 flex flex-col items-center gap-2">
+              <p className="text-xs font-medium text-slate-700">{bucket.count}</p>
+              <div
+                className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-lg transition-all hover:from-blue-700 hover:to-blue-500"
+                style={{
+                  height: `${bucket.count > 0
+                    ? Math.max((bucket.count / analyticsData.maxBucketCount) * 100, 8)
+                    : 2
+                    }%`,
+                }}
+              ></div>
+              <p className="text-xs text-slate-600 text-center">
+                {bucket.label}
               </p>
             </div>
           ))}
         </div>
+        {(analyticsData.isShowingHistoricalFallback || !analyticsData.hasChartApplications) && (
+          <p className="mt-3 text-sm text-slate-500">
+            {analyticsData.chartEmptyMessage}
+          </p>
+        )}
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6">
           <h3 className="font-semibold text-slate-900 mb-4">Top Performing Scholarships</h3>
           <div className="space-y-3">
-            {scholarships.map((scholarship, index) => (
-              <div key={scholarship.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+            {analyticsData.scholarshipSummaries.map((scholarship, index) => (
+              <div key={scholarship.title} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
                     {index + 1}
                   </div>
                   <div>
                     <p className="font-medium text-slate-900 text-sm">{scholarship.title}</p>
-                    <p className="text-xs text-slate-600">{scholarship.applicants} applications</p>
+                    <p className="text-xs text-slate-600">{scholarship.applications} applications</p>
+                    <p className="text-xs text-slate-500">
+                      {formatPercent(scholarship.averageMatchScore)} avg match
+                    </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold text-slate-900">{scholarship.shortlisted}</p>
-                  <p className="text-xs text-slate-600">shortlisted</p>
+                  <p className="font-semibold text-slate-900">
+                    {formatPercent(scholarship.selectionRate)}
+                  </p>
+                  <p className="text-xs text-slate-600">selection rate</p>
+                  <p className="text-xs text-slate-500">
+                    {scholarship.shortlisted} shortlisted
+                  </p>
                 </div>
               </div>
             ))}
+            {analyticsData.scholarshipSummaries.length === 0 && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+                <p className="font-medium text-slate-900">No scholarship data yet</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Application analytics will appear after candidates apply.
+                </p>
+              </div>
+            )}
           </div>
         </Card>
 
         <Card className="p-6">
-          <h3 className="font-semibold text-slate-900 mb-4">Candidate Distribution</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-slate-900">Candidate Distribution</h3>
+            <p className="text-sm text-slate-600">
+              {analyticsData.totalApplicants} total
+            </p>
+          </div>
           <div className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-slate-600">Pending Review</p>
-                <p className="text-sm font-semibold text-slate-900">365 (81.5%)</p>
+            {analyticsData.statusRows.map((row) => (
+              <div key={row.status}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm text-slate-600">{row.label}</p>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {row.count} ({formatPercent(row.percentage)})
+                  </p>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${row.barClassName}`}
+                    style={{ width: `${clampPercent(row.percentage)}%` }}
+                  ></div>
+                </div>
               </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-slate-500 rounded-full" style={{ width: '81.5%' }}></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-slate-600">Shortlisted</p>
-                <p className="text-sm font-semibold text-slate-900">68 (15.2%)</p>
-              </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-blue-500 rounded-full" style={{ width: '15.2%' }}></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-slate-600">Selected</p>
-                <p className="text-sm font-semibold text-slate-900">15 (3.3%)</p>
-              </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-green-500 rounded-full" style={{ width: '3.3%' }}></div>
-              </div>
+            ))}
+            <div className="rounded-lg bg-indigo-50 p-3">
+              <p className="text-xs font-medium uppercase text-indigo-700">Reviewed</p>
+              <p className="mt-1 text-lg font-bold text-indigo-900">
+                {formatPercent(analyticsData.reviewCompletionRate)}
+              </p>
             </div>
           </div>
         </Card>
@@ -2008,30 +2646,58 @@ export function InstitutionDashboard() {
   );
 
   const renderAnnouncements = () => {
-    const bulkRecipientCount = getBulkAnnouncementCandidates().length;
+    const bulkRecipientCount = bulkAnnouncementSummary.recipients.length;
+    const matchedCandidateCount = bulkAnnouncementSummary.candidates.length;
+    const skippedCandidateCount = bulkAnnouncementSummary.invalidCandidates.length;
+    const isCustomTemplateIncomplete =
+      bulkTemplate === 'custom' &&
+      (!bulkCustomSubject.trim() || !bulkCustomMessage.trim());
 
     return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-900">Announcements</h2>
-        <Button className="bg-purple-600 hover:bg-purple-700 text-white">
-          <Send className="w-4 h-4 mr-2" />
-          Create Announcement
-        </Button>
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Announcements</h2>
+          <p className="text-sm text-slate-600">
+            {candidateSource === 'real'
+              ? 'Using real institution application records'
+              : 'Using sample candidates until an institution session has real applications'}
+          </p>
+        </div>
+        {isLoadingInstitutionApplications && (
+          <div className="flex items-center gap-2 rounded-lg bg-purple-50 px-3 py-2 text-sm text-purple-700">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading applications
+          </div>
+        )}
       </div>
 
       <Card className="p-6">
-        <h3 className="font-semibold text-slate-900 mb-4">Selected Candidates</h3>
+        <h3 className="font-semibold text-slate-900 mb-4">Outcome Announcements</h3>
         <div className="space-y-4">
           {filteredCandidates
-            .filter((c) => c.status === 'selected')
+            .filter((c) => canSendCandidateAnnouncement(c.status))
             .map((candidate) => (
               <div
                 key={candidate.id}
-                className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg"
+                className={`flex items-center justify-between p-4 rounded-lg ${
+                  candidate.status === 'selected'
+                    ? 'bg-green-50 border border-green-200'
+                    : candidate.status === 'shortlisted'
+                      ? 'bg-blue-50 border border-blue-200'
+                      : 'bg-red-50 border border-red-200'
+                }`}
               >
                 <div className="flex items-center gap-4">
-                  <div className="bg-green-600 p-3 rounded-full">
+                  <div
+                    className={`p-3 rounded-full ${
+                      candidate.status === 'selected'
+                        ? 'bg-green-600'
+                        : candidate.status === 'shortlisted'
+                          ? 'bg-blue-600'
+                          : 'bg-red-600'
+                    }`}
+                  >
                     <CheckCircle className="w-5 h-5 text-white" />
                   </div>
                   <div>
@@ -2043,27 +2709,63 @@ export function InstitutionDashboard() {
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"
-                    className="bg-green-600 hover:bg-green-700 text-white"
+                    className={getAnnouncementButtonClass(candidate.status)}
                     onClick={() => handleAnnouncement(candidate.id)}
                   >
                     <Send className="w-4 h-4 mr-2" />
-                    Send Selection Email
+                    Send {candidateAnnouncementLabels[candidate.status]}
                   </Button>
                 </div>
               </div>
             ))}
+          {filteredCandidates.filter((c) => canSendCandidateAnnouncement(c.status)).length === 0 && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+              <p className="font-medium text-slate-900">No outcome announcements ready</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Shortlist, select, or reject applicants to send them outcome emails.
+              </p>
+            </div>
+          )}
         </div>
       </Card>
 
       <Card className="p-6">
         <h3 className="font-semibold text-slate-900 mb-4">Bulk Announcements</h3>
         <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-medium uppercase text-slate-500">Matched</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">
+                {matchedCandidateCount}
+              </p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs font-medium uppercase text-emerald-700">Recipients</p>
+              <p className="mt-1 text-2xl font-bold text-emerald-700">
+                {bulkRecipientCount}
+              </p>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs font-medium uppercase text-amber-700">Skipped</p>
+              <p className="mt-1 text-2xl font-bold text-amber-700">
+                {skippedCandidateCount}
+              </p>
+            </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+              <p className="text-xs font-medium uppercase text-blue-700">Duplicates</p>
+              <p className="mt-1 text-2xl font-bold text-blue-700">
+                {bulkAnnouncementSummary.duplicateCount}
+              </p>
+            </div>
+          </div>
           <div>
             <Label>Recipient Group</Label>
             <select
               value={bulkRecipientGroup}
               onChange={(event) =>
-                setBulkRecipientGroup(event.target.value as InstitutionBulkRecipientGroup)
+                handleBulkRecipientGroupChange(
+                  event.target.value as InstitutionBulkRecipientGroup,
+                )
               }
               className="w-full mt-2 px-4 py-2 border border-slate-300 rounded-lg"
             >
@@ -2097,17 +2799,60 @@ export function InstitutionDashboard() {
             >
               <option value="selection">Selection Announcement</option>
               <option value="shortlist">Shortlist Notification</option>
+              <option value="rejection">Rejection Notification</option>
               <option value="received">Application Received</option>
               <option value="deadline">Deadline Reminder</option>
               <option value="custom">Custom Message</option>
             </select>
           </div>
+          {bulkTemplate === 'custom' && (
+            <div className="grid gap-4">
+              <div>
+                <Label htmlFor="bulkCustomSubject">Subject</Label>
+                <Input
+                  id="bulkCustomSubject"
+                  value={bulkCustomSubject}
+                  onChange={(event) => setBulkCustomSubject(event.target.value)}
+                  maxLength={255}
+                  placeholder="Scholarship application update"
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <Label htmlFor="bulkCustomMessage">Message</Label>
+                <Textarea
+                  id="bulkCustomMessage"
+                  value={bulkCustomMessage}
+                  onChange={(event) => setBulkCustomMessage(event.target.value)}
+                  maxLength={10000}
+                  placeholder="Write the announcement body..."
+                  className="mt-2 min-h-36"
+                />
+              </div>
+            </div>
+          )}
+          {skippedCandidateCount > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {skippedCandidateCount} matched candidate
+              {skippedCandidateCount === 1 ? ' has' : 's have'} missing or invalid
+              email addresses. Fix them before sending.
+            </div>
+          )}
           <Button
             className="w-full bg-purple-600 hover:bg-purple-700 text-white"
             onClick={handleBulkAnnouncement}
-            disabled={isSendingBulkAnnouncement || bulkRecipientCount === 0}
+            disabled={
+              isSendingBulkAnnouncement ||
+              bulkRecipientCount === 0 ||
+              skippedCandidateCount > 0 ||
+              isCustomTemplateIncomplete
+            }
           >
-            <Send className="w-4 h-4 mr-2" />
+            {isSendingBulkAnnouncement ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4 mr-2" />
+            )}
             {isSendingBulkAnnouncement
               ? 'Sending Bulk Announcement'
               : `Send Bulk Announcement (${bulkRecipientCount})`}
@@ -2123,14 +2868,32 @@ export function InstitutionDashboard() {
       <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="bg-gradient-to-br from-purple-600 to-indigo-600 p-3 rounded-xl">
-              <Building2 className="w-8 h-8 text-white" />
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-gradient-to-br from-purple-600 to-indigo-600 p-3 rounded-xl">
+                <Building2 className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-slate-900">Institution Dashboard</h1>
+                <p className="text-slate-600">University of Colombo</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">Institution Dashboard</h1>
-              <p className="text-slate-600">University of Colombo</p>
-            </div>
+            {onLogout && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleInstitutionLogout}
+                disabled={isLoggingOut}
+                className="self-start border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 sm:self-auto"
+              >
+                {isLoggingOut ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <LogOut className="mr-2 h-4 w-4" />
+                )}
+                {isLoggingOut ? 'Logging out' : 'Logout'}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -2456,16 +3219,16 @@ export function InstitutionDashboard() {
                   <Download className="mr-2 h-4 w-4" />
                   Download Full Application
                 </Button>
-                {selectedCandidate.status === 'selected' && (
+                {canSendCandidateAnnouncement(selectedCandidate.status) && (
                   <Button
-                    className={`flex-1 text-blue-600 hover:bg-green-700 ${activeReviewAction[selectedCandidate.id] === 'announcement'
-                      ? 'bg-green-800 ring-2 ring-green-300'
-                      : 'bg-green-600'
+                    className={`flex-1 ${getAnnouncementButtonClass(selectedCandidate.status)} ${activeReviewAction[selectedCandidate.id] === 'announcement'
+                      ? 'ring-2 ring-purple-300'
+                      : ''
                       }`}
                     onClick={() => handleAnnouncement(selectedCandidate.id)}
                   >
                     <Send className="mr-2 h-4 w-4" />
-                    Send Selection Email
+                    Send {candidateAnnouncementLabels[selectedCandidate.status]}
                   </Button>
                 )}
               </div>
