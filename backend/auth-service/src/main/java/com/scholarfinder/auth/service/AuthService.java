@@ -126,14 +126,15 @@ public class AuthService {
     @Transactional
     public AuthResponse login(LoginRequest request) {
         try {
+            String email = request.getEmail().trim();
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
-                            request.getEmail(),
+                            email,
                             request.getPassword()
                     )
             );
 
-            User user = userRepository.findByEmail(request.getEmail())
+            User user = userRepository.findByEmailIgnoreCase(email)
                     .orElseThrow(() -> new AuthException("User not found"));
 
             // Check if user is active

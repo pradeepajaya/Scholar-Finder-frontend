@@ -5,14 +5,19 @@ import com.scholarfinder.notification.dto.AnnouncementRecipientGroup;
 import com.scholarfinder.notification.dto.AnnouncementRequest;
 import com.scholarfinder.notification.dto.AnnouncementResponse;
 import com.scholarfinder.notification.dto.AnnouncementRecipientDto;
+import com.scholarfinder.notification.dto.AnnouncementSkippedDuplicateDto;
 import com.scholarfinder.notification.dto.AudienceCountsResponse;
 import com.scholarfinder.notification.entity.EmailNotification;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -23,6 +28,8 @@ import java.util.regex.Pattern;
 public class AnnouncementService {
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+    private static final String ADMIN_ANNOUNCEMENT_TYPE = "ADMIN_ANNOUNCEMENT";
+    private static final String DUPLICATE_REASON = "Already sent this announcement to this recipient.";
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final EmailService emailService;
@@ -66,6 +73,10 @@ public class AnnouncementService {
             throw new IllegalArgumentException("No recipients found for the selected audience.");
         }
 
+        String subject = request.getSubject().trim();
+        String message = request.getMessage().trim();
+        String dedupeKey = dedupeKeyFor(request, subject, message);
+
         AnnouncementResponse response = new AnnouncementResponse();
         response.setRecipientGroup(request.getRecipientGroup());
         response.setRecipientCount(recipients.size());
@@ -73,13 +84,24 @@ public class AnnouncementService {
 
         int sentCount = 0;
         List<AnnouncementFailureDto> failures = new ArrayList<>();
+        List<AnnouncementSkippedDuplicateDto> skippedDuplicates = new ArrayList<>();
 
         for (Recipient recipient : recipients) {
+            if (wasAnnouncementAlreadySent(recipient.email(), dedupeKey)) {
+                skippedDuplicates.add(new AnnouncementSkippedDuplicateDto(
+                    recipient.email(),
+                    recipient.name(),
+                    DUPLICATE_REASON
+                ));
+                continue;
+            }
+
             EmailNotification notification = emailService.sendAnnouncementEmail(
                 recipient.email(),
                 recipient.name(),
-                request.getSubject().trim(),
-                request.getMessage().trim()
+                subject,
+                message,
+                dedupeKey
             );
 
             if ("SENT".equals(notification.getStatus())) {
@@ -95,9 +117,62 @@ public class AnnouncementService {
 
         response.setSentCount(sentCount);
         response.setFailedCount(failures.size());
+        response.setSkippedDuplicateCount(skippedDuplicates.size());
         response.setFailures(failures);
+        response.setSkippedDuplicates(skippedDuplicates);
 
         return response;
+    }
+
+    private boolean wasAnnouncementAlreadySent(String email, String dedupeKey) {
+        MapSqlParameterSource params = new MapSqlParameterSource()
+            .addValue("email", normalizeEmail(email))
+            .addValue("dedupeKey", dedupeKey)
+            .addValue("notificationType", ADMIN_ANNOUNCEMENT_TYPE);
+
+        Integer count = jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM notifications.email_notifications
+            WHERE LOWER(recipient_email) = :email
+              AND status = 'SENT'
+              AND notification_type = :notificationType
+              AND template_data = :dedupeKey
+            """,
+            params,
+            Integer.class
+        );
+
+        return count != null && count > 0;
+    }
+
+    private String dedupeKeyFor(AnnouncementRequest request, String subject, String message) {
+        String explicitKey = request.getDedupeKey();
+        if (explicitKey != null && !explicitKey.isBlank()) {
+            return "explicit:" + explicitKey.trim().toLowerCase(Locale.ROOT);
+        }
+
+        return "content:" + sha256(normalizeForDedupe(subject) + "\n" + normalizeForDedupe(message));
+    }
+
+    private String normalizeForDedupe(String value) {
+        return value == null
+            ? ""
+            : value
+                .replace("\r\n", "\n")
+                .replace("\r", "\n")
+                .trim()
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 digest is not available", e);
+        }
     }
 
     private List<Recipient> resolveRecipients(AnnouncementRequest request) {

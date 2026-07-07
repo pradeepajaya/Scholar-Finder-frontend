@@ -95,6 +95,14 @@ public class EmailService {
      * Send an admin announcement and return the tracked notification status.
      */
     public EmailNotification sendAnnouncementEmail(String to, String recipientName, String subject, String message) {
+        return sendAnnouncementEmail(to, recipientName, subject, message, null);
+    }
+
+    /**
+     * Send an admin announcement and keep a duplicate-tracking key for later sends.
+     */
+    public EmailNotification sendAnnouncementEmail(String to, String recipientName, String subject, String message,
+                                                   String dedupeKey) {
         String greetingName = recipientName == null || recipientName.isBlank()
             ? "Scholar Finder member"
             : recipientName.trim();
@@ -112,6 +120,7 @@ public class EmailService {
         notification.setBodyHtml(buildAnnouncementHtml(greetingName, message));
         notification.setNotificationType("ADMIN_ANNOUNCEMENT");
         notification.setReferenceType("ADMIN_ANNOUNCEMENT");
+        notification.setTemplateData(dedupeKey);
         notification.setStatus("PENDING");
 
         emailRepository.save(notification);

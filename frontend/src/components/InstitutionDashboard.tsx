@@ -35,6 +35,7 @@ import {
 import { toast } from 'sonner';
 import { PostScholarshipForm } from './PostScholarshipForm';
 import {
+  AnnouncementResponse,
   AnnouncementRecipient,
   InstitutionApplicationResponse,
   notificationApi,
@@ -901,6 +902,27 @@ const getAnnouncementButtonClass = (status: CandidateStatus) => {
   return 'bg-green-600 hover:bg-green-700 text-white';
 };
 
+const dedupeSegment = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'unknown';
+
+const buildCandidateOutcomeDedupeKey = (
+  status: CandidateStatus,
+  scholarship: string,
+) => `candidate-outcome:${status}:${dedupeSegment(scholarship)}`;
+
+const bulkTemplateOutcomeStatus = (
+  template: InstitutionAnnouncementTemplate,
+): CandidateStatus | null => {
+  if (template === 'selection') return 'selected';
+  if (template === 'shortlist') return 'shortlisted';
+  if (template === 'rejection') return 'rejected';
+  return null;
+};
+
 const buildCandidateAnnouncementContent = (candidate: Candidate) => {
   if (candidate.status === 'shortlisted') {
     return {
@@ -1220,6 +1242,7 @@ export function InstitutionDashboard({ onLogout }: InstitutionDashboardProps) {
         recipients: [{ email: candidateEmail, name: candidate.name }],
         subject: content.subject,
         message: content.message,
+        dedupeKey: buildCandidateOutcomeDedupeKey(candidate.status, candidate.scholarship),
       });
 
       if (!response.success || response.data.failedCount > 0) {
@@ -1231,7 +1254,11 @@ export function InstitutionDashboard({ onLogout }: InstitutionDashboardProps) {
         return;
       }
 
-      toast.success(content.successMessage);
+      if (response.data.skippedDuplicateCount > 0) {
+        toast.info(`${candidate.name} already received this ${content.label.toLowerCase()}.`);
+      } else {
+        toast.success(content.successMessage);
+      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -1277,9 +1304,12 @@ export function InstitutionDashboard({ onLogout }: InstitutionDashboardProps) {
     [bulkAnnouncementCandidates],
   );
 
-  const buildBulkAnnouncementContent = (recipientCount: number) => {
+  const buildBulkAnnouncementContent = (
+    recipientCount: number,
+    scholarshipOverride = bulkScholarship,
+  ) => {
     const scholarshipName =
-      bulkScholarship === 'all' ? 'your scholarship application' : bulkScholarship;
+      scholarshipOverride === 'all' ? 'your scholarship application' : scholarshipOverride;
     const audienceLabel =
       bulkRecipientGroup === 'all'
         ? 'applicants'
@@ -1352,31 +1382,95 @@ export function InstitutionDashboard({ onLogout }: InstitutionDashboardProps) {
       return;
     }
 
+    const outcomeStatus = bulkTemplateOutcomeStatus(bulkTemplate);
+
     setIsSendingBulkAnnouncement(true);
 
     try {
-      const response = await notificationApi.sendAnnouncement({
-        recipientGroup: 'CUSTOM',
-        recipients,
-        subject: content.subject,
-        message: content.message,
-      });
+      const responses: AnnouncementResponse[] = [];
 
-      if (!response.success || response.data.failedCount > 0) {
-        const failurePreview = response.data.failures
+      if (outcomeStatus && bulkScholarship === 'all') {
+        const candidatesByScholarship = new Map<string, Candidate[]>();
+        bulkAnnouncementCandidates.forEach((candidate) => {
+          const scholarshipCandidates =
+            candidatesByScholarship.get(candidate.scholarship) ?? [];
+          scholarshipCandidates.push(candidate);
+          candidatesByScholarship.set(candidate.scholarship, scholarshipCandidates);
+        });
+
+        for (const [scholarshipName, scholarshipCandidates] of candidatesByScholarship) {
+          const scholarshipSummary = buildBulkRecipientSummary(scholarshipCandidates);
+          if (scholarshipSummary.recipients.length === 0) {
+            continue;
+          }
+
+          const scholarshipContent = buildBulkAnnouncementContent(
+            scholarshipSummary.recipients.length,
+            scholarshipName,
+          );
+          const response = await notificationApi.sendAnnouncement({
+            recipientGroup: 'CUSTOM',
+            recipients: scholarshipSummary.recipients,
+            subject: scholarshipContent.subject,
+            message: scholarshipContent.message,
+            dedupeKey: buildCandidateOutcomeDedupeKey(outcomeStatus, scholarshipName),
+          });
+          responses.push(response.data);
+        }
+      } else {
+        const response = await notificationApi.sendAnnouncement({
+          recipientGroup: 'CUSTOM',
+          recipients,
+          subject: content.subject,
+          message: content.message,
+          dedupeKey:
+            outcomeStatus && bulkScholarship !== 'all'
+              ? buildCandidateOutcomeDedupeKey(outcomeStatus, bulkScholarship)
+              : undefined,
+        });
+        responses.push(response.data);
+      }
+
+      const aggregateResult = responses.reduce(
+        (summary, result) => ({
+          sentCount: summary.sentCount + result.sentCount,
+          failedCount: summary.failedCount + result.failedCount,
+          skippedDuplicateCount:
+            summary.skippedDuplicateCount + result.skippedDuplicateCount,
+          failures: [...summary.failures, ...result.failures],
+        }),
+        {
+          sentCount: 0,
+          failedCount: 0,
+          skippedDuplicateCount: 0,
+          failures: [] as AnnouncementResponse['failures'],
+        },
+      );
+
+      if (aggregateResult.failedCount > 0) {
+        const failurePreview = aggregateResult.failures
           .slice(0, 3)
           .map((failure) => `${failure.recipientEmail}: ${failure.errorMessage || failure.status}`)
           .join('; ');
         toast.error(
           failurePreview
-            ? `${response.message} ${failurePreview}`
-            : response.message ||
-              `Sent ${response.data.sentCount}; ${response.data.failedCount} failed.`,
+            ? `Bulk announcement completed with failures. ${failurePreview}`
+            : `Sent ${aggregateResult.sentCount}; ${aggregateResult.failedCount} failed.`,
         );
         return;
       }
 
-      toast.success(`Bulk announcement sent to ${response.data.sentCount} candidates.`);
+      if (aggregateResult.sentCount === 0 && aggregateResult.skippedDuplicateCount > 0) {
+        toast.info(
+          `No new emails sent. ${aggregateResult.skippedDuplicateCount} candidate(s) already received this announcement.`,
+        );
+      } else if (aggregateResult.skippedDuplicateCount > 0) {
+        toast.success(
+          `Bulk announcement sent to ${aggregateResult.sentCount} candidate(s); ${aggregateResult.skippedDuplicateCount} duplicate(s) skipped.`,
+        );
+      } else {
+        toast.success(`Bulk announcement sent to ${aggregateResult.sentCount} candidates.`);
+      }
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Could not send bulk announcement.',

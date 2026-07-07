@@ -51,6 +51,16 @@ export function PasswordResetDialog({
   const [showResetForm, setShowResetForm] = useState(false);
 
   const styles = themeClasses[theme];
+  const trimmedToken = token.trim();
+  const passwordMeetsLength = password.length >= 8;
+  const confirmPasswordMeetsLength = confirmPassword.length >= 8;
+  const hasConfirmPassword = confirmPassword.length > 0;
+  const passwordsMismatch = hasConfirmPassword && password !== confirmPassword;
+  const canResetPassword =
+    trimmedToken.length > 0 &&
+    passwordMeetsLength &&
+    confirmPasswordMeetsLength &&
+    !passwordsMismatch;
 
   useEffect(() => {
     if (open) {
@@ -94,7 +104,22 @@ export function PasswordResetDialog({
     setError("");
     setMessage("");
 
-    if (password !== confirmPassword) {
+    if (!trimmedToken) {
+      setError("Enter the reset code from your email.");
+      return;
+    }
+
+    if (!passwordMeetsLength) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (!confirmPasswordMeetsLength) {
+      setError("Confirm password must be at least 8 characters.");
+      return;
+    }
+
+    if (passwordsMismatch) {
       setError("Passwords do not match.");
       return;
     }
@@ -103,10 +128,11 @@ export function PasswordResetDialog({
 
     try {
       await authApi.resetPassword({
-        token: token.trim(),
+        token: trimmedToken,
         password,
         confirmPassword,
       });
+      setToken("");
       setPassword("");
       setConfirmPassword("");
       setMessage("Password updated. You can sign in with the new password.");
@@ -186,7 +212,10 @@ export function PasswordResetDialog({
                 <Input
                   id="reset-token"
                   value={token}
-                  onChange={(event) => setToken(event.target.value)}
+                  onChange={(event) => {
+                    setToken(event.target.value);
+                    setError("");
+                  }}
                   placeholder="Paste reset code"
                   className="h-12 pl-10"
                   required
@@ -203,14 +232,33 @@ export function PasswordResetDialog({
                   id="new-password"
                   type="password"
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setError("");
+                  }}
                   placeholder="At least 8 characters"
-                  className="h-12 pl-10"
+                  className={`h-12 pl-10 ${
+                    password.length > 0 && !passwordMeetsLength
+                      ? "border-red-400 focus-visible:ring-red-500"
+                      : ""
+                  }`}
                   minLength={8}
                   required
                   disabled={isResetting}
+                  aria-invalid={password.length > 0 && !passwordMeetsLength}
+                  aria-describedby="new-password-help"
                 />
               </div>
+              <p
+                id="new-password-help"
+                className={`mt-1 text-xs ${
+                  password.length > 0 && !passwordMeetsLength
+                    ? "text-red-600"
+                    : "text-slate-500"
+                }`}
+              >
+                Use at least 8 characters.
+              </p>
             </div>
 
             <div>
@@ -221,20 +269,50 @@ export function PasswordResetDialog({
                   id="confirm-new-password"
                   type="password"
                   value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  onChange={(event) => {
+                    setConfirmPassword(event.target.value);
+                    setError("");
+                  }}
                   placeholder="Re-enter new password"
-                  className="h-12 pl-10"
+                  className={`h-12 pl-10 ${
+                    hasConfirmPassword &&
+                    (!confirmPasswordMeetsLength || passwordsMismatch)
+                      ? "border-red-400 focus-visible:ring-red-500"
+                      : ""
+                  }`}
                   minLength={8}
                   required
                   disabled={isResetting}
+                  aria-invalid={
+                    hasConfirmPassword &&
+                    (!confirmPasswordMeetsLength || passwordsMismatch)
+                  }
+                  aria-describedby="confirm-new-password-help"
                 />
               </div>
+              <p
+                id="confirm-new-password-help"
+                className={`mt-1 text-xs ${
+                  hasConfirmPassword &&
+                  (!confirmPasswordMeetsLength || passwordsMismatch)
+                    ? "text-red-600"
+                    : "text-slate-500"
+                }`}
+              >
+                {!hasConfirmPassword
+                  ? "Re-enter the same password."
+                  : !confirmPasswordMeetsLength
+                    ? "Confirm password must be at least 8 characters."
+                    : passwordsMismatch
+                      ? "Passwords do not match."
+                      : "Passwords match."}
+              </p>
             </div>
 
             <Button
               type="submit"
               className={`h-11 w-full text-white shadow-lg ${styles.button}`}
-              disabled={isResetting}
+              disabled={isResetting || !canResetPassword}
             >
               {isResetting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Update password

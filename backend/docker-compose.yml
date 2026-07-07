@@ -105,6 +105,7 @@ services:
       - JWT_SECRET=c3VwZXJzZWNyZXRrZXlzdXBlcnNlY3JldGtleTEyMzQ1Ng==
       - JWT_EXPIRATION=86400000
       - NOTIFICATION_SERVICE_URL=http://notification-service:8085
+      - NOTIFICATION_REQUEST_TIMEOUT_SECONDS=${NOTIFICATION_REQUEST_TIMEOUT_SECONDS:-45}
     depends_on:
       postgres:
         condition: service_healthy

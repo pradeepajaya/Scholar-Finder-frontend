@@ -25,7 +25,7 @@ import java.util.Map;
 public class PasswordResetEmailService {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    private static final long MIN_REQUEST_TIMEOUT_SECONDS = 5;
     private static final DateTimeFormatter EMAIL_TIME_FORMAT =
             DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm");
 
@@ -36,6 +36,9 @@ public class PasswordResetEmailService {
 
     @Value("${app.notifications.base-url:http://localhost:8085}")
     private String notificationBaseUrl;
+
+    @Value("${app.notifications.request-timeout-seconds:45}")
+    private long requestTimeoutSeconds;
 
     public void sendResetCode(String email, String resetCode, LocalDateTime expiresAt) {
         String endpoint = notificationEndpoint();
@@ -52,7 +55,7 @@ public class PasswordResetEmailService {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
-                    .timeout(REQUEST_TIMEOUT)
+                    .timeout(requestTimeout())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
                     .build();
@@ -84,6 +87,10 @@ public class PasswordResetEmailService {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
         return baseUrl + "/api/notifications/alert";
+    }
+
+    private Duration requestTimeout() {
+        return Duration.ofSeconds(Math.max(MIN_REQUEST_TIMEOUT_SECONDS, requestTimeoutSeconds));
     }
 
     private String buildResetEmailBody(String resetCode, LocalDateTime expiresAt) {

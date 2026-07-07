@@ -22,6 +22,9 @@ public class AnnouncementRequest {
     @Size(max = 10000, message = "Message must be 10000 characters or less")
     private String message;
 
+    @Size(max = 500, message = "Duplicate tracking key must be 500 characters or less")
+    private String dedupeKey;
+
     private Boolean verifiedOnly = true;
 
     @Size(max = 500, message = "Announcements can be sent to at most 500 custom recipients")
@@ -61,6 +64,14 @@ public class AnnouncementRequest {
 
     public void setVerifiedOnly(Boolean verifiedOnly) {
         this.verifiedOnly = verifiedOnly;
+    }
+
+    public String getDedupeKey() {
+        return dedupeKey;
+    }
+
+    public void setDedupeKey(String dedupeKey) {
+        this.dedupeKey = dedupeKey;
     }
 
     public List<String> getRecipientEmails() {

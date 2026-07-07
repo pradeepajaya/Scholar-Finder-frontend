@@ -21,5 +21,6 @@ public class ResetPasswordRequest {
     private String password;
 
     @NotBlank(message = "Confirm password is required")
+    @Size(min = 8, message = "Confirm password must be at least 8 characters long")
     private String confirmPassword;
 }

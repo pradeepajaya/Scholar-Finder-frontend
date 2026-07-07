@@ -86,13 +86,28 @@ public class NotificationController {
 
         AnnouncementResponse response = announcementService.sendAnnouncement(request);
         boolean fullySent = response.getFailedCount() == 0;
-        String message = fullySent
-            ? String.format("Announcement sent to %d recipient(s).", response.getSentCount())
-            : String.format(
-                "Announcement sent to %d recipient(s); %d recipient(s) failed.",
+        String message;
+        if (fullySent && response.getSkippedDuplicateCount() > 0) {
+            message = response.getSentCount() == 0
+                ? String.format(
+                    "No new emails sent; %d recipient(s) already received this announcement.",
+                    response.getSkippedDuplicateCount()
+                )
+                : String.format(
+                    "Announcement sent to %d recipient(s); %d duplicate recipient(s) skipped.",
+                    response.getSentCount(),
+                    response.getSkippedDuplicateCount()
+                );
+        } else if (fullySent) {
+            message = String.format("Announcement sent to %d recipient(s).", response.getSentCount());
+        } else {
+            message = String.format(
+                "Announcement sent to %d recipient(s); %d recipient(s) failed; %d duplicate recipient(s) skipped.",
                 response.getSentCount(),
-                response.getFailedCount()
+                response.getFailedCount(),
+                response.getSkippedDuplicateCount()
             );
+        }
 
         return ResponseEntity.ok(new ApiResponse<>(fullySent, message, response));
     }

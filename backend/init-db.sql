@@ -635,6 +635,9 @@ CREATE INDEX IF NOT EXISTS idx_contact_messages_priority ON notifications.contac
 CREATE INDEX IF NOT EXISTS idx_email_notifications_status ON notifications.email_notifications(status);
 CREATE INDEX IF NOT EXISTS idx_email_notifications_recipient ON notifications.email_notifications(recipient_email);
 CREATE INDEX IF NOT EXISTS idx_email_notifications_type ON notifications.email_notifications(notification_type);
+CREATE INDEX IF NOT EXISTS idx_email_notifications_announcement_dedupe
+    ON notifications.email_notifications(LOWER(recipient_email), template_data)
+    WHERE notification_type = 'ADMIN_ANNOUNCEMENT' AND status = 'SENT';
 
 -- =====================================================
 -- INSERT DEFAULT DATA

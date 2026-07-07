@@ -10,7 +10,9 @@ public class AnnouncementResponse {
     private int recipientCount;
     private int sentCount;
     private int failedCount;
+    private int skippedDuplicateCount;
     private List<AnnouncementFailureDto> failures = new ArrayList<>();
+    private List<AnnouncementSkippedDuplicateDto> skippedDuplicates = new ArrayList<>();
     private LocalDateTime sentAt;
 
     public AnnouncementRecipientGroup getRecipientGroup() {
@@ -45,12 +47,28 @@ public class AnnouncementResponse {
         this.failedCount = failedCount;
     }
 
+    public int getSkippedDuplicateCount() {
+        return skippedDuplicateCount;
+    }
+
+    public void setSkippedDuplicateCount(int skippedDuplicateCount) {
+        this.skippedDuplicateCount = skippedDuplicateCount;
+    }
+
     public List<AnnouncementFailureDto> getFailures() {
         return failures;
     }
 
     public void setFailures(List<AnnouncementFailureDto> failures) {
         this.failures = failures == null ? new ArrayList<>() : failures;
+    }
+
+    public List<AnnouncementSkippedDuplicateDto> getSkippedDuplicates() {
+        return skippedDuplicates;
+    }
+
+    public void setSkippedDuplicates(List<AnnouncementSkippedDuplicateDto> skippedDuplicates) {
+        this.skippedDuplicates = skippedDuplicates == null ? new ArrayList<>() : skippedDuplicates;
     }
 
     public LocalDateTime getSentAt() {

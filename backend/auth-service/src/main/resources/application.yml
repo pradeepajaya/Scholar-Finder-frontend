@@ -51,6 +51,7 @@ jwt:
 app:
   notifications:
     base-url: ${NOTIFICATION_SERVICE_URL:http://localhost:8085}
+    request-timeout-seconds: ${NOTIFICATION_REQUEST_TIMEOUT_SECONDS:45}
 
 # Management Endpoints
 management:
@@ -88,3 +89,4 @@ eureka:
 app:
   notifications:
     base-url: ${NOTIFICATION_SERVICE_URL:http://notification-service:8085}
+    request-timeout-seconds: ${NOTIFICATION_REQUEST_TIMEOUT_SECONDS:45}

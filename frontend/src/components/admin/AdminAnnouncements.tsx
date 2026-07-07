@@ -138,6 +138,13 @@ export function AdminAnnouncements() {
 
       if (!response.success || response.data.failedCount > 0) {
         toast.error(response.message || "Announcement completed with failures");
+      } else if (response.data.sentCount === 0 && response.data.skippedDuplicateCount > 0) {
+        toast.info(response.message || "All selected recipients already received this announcement");
+      } else if (response.data.skippedDuplicateCount > 0) {
+        toast.success(response.message || "Announcement sent with duplicate recipients skipped");
+        setSubject("");
+        setMessage("");
+        setCustomEmails("");
       } else {
         toast.success(response.message || "Announcement sent");
         setSubject("");
@@ -307,6 +314,13 @@ export function AdminAnnouncements() {
                   <Metric label="Sent" value={lastResult.sentCount} />
                   <Metric label="Failed" value={lastResult.failedCount} />
                 </div>
+                {lastResult.skippedDuplicateCount > 0 && (
+                  <div className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    {lastResult.skippedDuplicateCount} recipient
+                    {lastResult.skippedDuplicateCount === 1 ? " was" : "s were"} skipped
+                    because they already received this announcement.
+                  </div>
+                )}
                 {lastResult.failures.length > 0 && (
                   <div className="mt-4 space-y-2">
                     {lastResult.failures.slice(0, 5).map((failure) => (

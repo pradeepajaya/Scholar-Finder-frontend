@@ -395,6 +395,7 @@ export interface AnnouncementRequest {
   recipientGroup: AnnouncementRecipientGroup;
   subject: string;
   message: string;
+  dedupeKey?: string;
   verifiedOnly?: boolean;
   recipientEmails?: string[];
   recipients?: AnnouncementRecipient[];
@@ -406,12 +407,20 @@ export interface AnnouncementFailure {
   errorMessage?: string;
 }
 
+export interface AnnouncementSkippedDuplicate {
+  recipientEmail: string;
+  recipientName?: string;
+  reason?: string;
+}
+
 export interface AnnouncementResponse {
   recipientGroup: AnnouncementRecipientGroup;
   recipientCount: number;
   sentCount: number;
   failedCount: number;
+  skippedDuplicateCount: number;
   failures: AnnouncementFailure[];
+  skippedDuplicates: AnnouncementSkippedDuplicate[];
   sentAt: string;
 }
 
