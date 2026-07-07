@@ -1467,10 +1467,12 @@ export function ScholarshipApplicationDialog({
   scholarship,
   open,
   onOpenChange,
+  onApplicationSubmitted,
 }: {
   scholarship: BrowseScholarship | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onApplicationSubmitted?: () => void;
 }) {
   const [formData, setFormData] = useState<ApplicationFormState>(
     getInitialApplicationForm(scholarship),
@@ -1809,6 +1811,7 @@ export function ScholarshipApplicationDialog({
           ? "Your existing application was updated successfully."
           : "Your application was submitted successfully.",
       );
+      onApplicationSubmitted?.();
     } catch (error) {
       console.error("Failed to submit application:", error);
       setSubmitError(
@@ -2314,8 +2317,8 @@ export function ScholarshipApplicationDialog({
                   <div>
                     <p className="text-lg font-semibold">{submitSuccess}</p>
                     <p className="mt-2 text-base">
-                      You can continue tracking this application from your
-                      profile once application tracking is enabled.
+                      You can continue tracking this application from the
+                      Applied section in your profile.
                     </p>
                   </div>
                 </div>

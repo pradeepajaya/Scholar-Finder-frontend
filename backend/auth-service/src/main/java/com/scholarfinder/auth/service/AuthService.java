@@ -1,10 +1,13 @@
 package com.scholarfinder.auth.service;
 
+import com.scholarfinder.auth.dto.request.ForgotPasswordRequest;
 import com.scholarfinder.auth.dto.request.LoginRequest;
 import com.scholarfinder.auth.dto.request.RefreshTokenRequest;
 import com.scholarfinder.auth.dto.request.RegisterRequest;
+import com.scholarfinder.auth.dto.request.ResetPasswordRequest;
 import com.scholarfinder.auth.dto.request.StudentAccountRecoveryRequest;
 import com.scholarfinder.auth.dto.response.AuthResponse;
+import com.scholarfinder.auth.dto.response.ForgotPasswordResponse;
 import com.scholarfinder.auth.entity.RefreshToken;
 import com.scholarfinder.auth.entity.Role;
 import com.scholarfinder.auth.entity.User;
@@ -22,7 +25,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -30,11 +35,17 @@ import java.util.UUID;
 @Slf4j
 public class AuthService {
 
+    private static final int DEFAULT_REFRESH_TOKEN_DAYS = 7;
+    private static final int REMEMBER_ME_REFRESH_TOKEN_DAYS = 30;
+    private static final int PASSWORD_RESET_TOKEN_MINUTES = 30;
+    private static final SecureRandom PASSWORD_RESET_CODE_RANDOM = new SecureRandom();
+
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthenticationManager authenticationManager;
+    private final PasswordResetEmailService passwordResetEmailService;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -136,7 +147,7 @@ public class AuthService {
 
             // Generate tokens
             String accessToken = jwtTokenProvider.generateToken(authentication);
-            String refreshToken = createRefreshToken(user);
+            String refreshToken = createRefreshToken(user, Boolean.TRUE.equals(request.getRememberMe()));
 
             log.info("User logged in: {}", user.getEmail());
 
@@ -179,6 +190,75 @@ public class AuthService {
     }
 
     @Transactional
+    public ForgotPasswordResponse forgotPassword(ForgotPasswordRequest request) {
+        String email = request.getEmail().trim().toLowerCase();
+
+        return userRepository.findByEmail(email)
+                .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
+                .map(user -> {
+                    String resetToken = generateResetCode();
+                    LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(PASSWORD_RESET_TOKEN_MINUTES);
+
+                    user.setResetPasswordToken(resetToken);
+                    user.setResetPasswordExpires(expiresAt);
+                    userRepository.save(user);
+
+                    passwordResetEmailService.sendResetCode(user.getEmail(), resetToken, expiresAt);
+
+                    log.info("Password reset code generated and emailed for {}", user.getEmail());
+                    return ForgotPasswordResponse.builder()
+                            .expiresAt(expiresAt)
+                            .build();
+                })
+                .orElseGet(() -> {
+                    log.info("Password reset requested for non-existent or inactive account: {}", email);
+                    return ForgotPasswordResponse.builder().build();
+                });
+    }
+
+    private String generateResetCode() {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            String code = String.format(Locale.ROOT, "%06d", PASSWORD_RESET_CODE_RANDOM.nextInt(1_000_000));
+            if (userRepository.findByResetPasswordToken(code).isEmpty()) {
+                return code;
+            }
+        }
+
+        return UUID.randomUUID().toString();
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        if (!request.getPassword().equals(request.getConfirmPassword())) {
+            throw new AuthException("Passwords do not match");
+        }
+
+        User user = userRepository.findByResetPasswordToken(request.getToken())
+                .orElseThrow(() -> new AuthException("Invalid or expired password reset code"));
+
+        if (user.getResetPasswordExpires() == null ||
+                LocalDateTime.now().isAfter(user.getResetPasswordExpires())) {
+            user.setResetPasswordToken(null);
+            user.setResetPasswordExpires(null);
+            userRepository.save(user);
+            throw new AuthException("Invalid or expired password reset code");
+        }
+
+        if (!user.getIsActive()) {
+            throw new AuthException("Account is deactivated. Please contact support.");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setIsVerified(true);
+        user.setResetPasswordToken(null);
+        user.setResetPasswordExpires(null);
+        refreshTokenRepository.deleteByUser(user);
+        userRepository.save(user);
+
+        log.info("Password reset completed for user: {}", user.getEmail());
+    }
+
+    @Transactional
     public AuthResponse refreshToken(RefreshTokenRequest request) {
         RefreshToken refreshToken = refreshTokenRepository.findByToken(request.getRefreshToken())
                 .orElseThrow(() -> new AuthException("Invalid refresh token"));
@@ -195,7 +275,9 @@ public class AuthService {
 
         // Generate new tokens
         String newAccessToken = jwtTokenProvider.generateToken(user.getEmail());
-        String newRefreshToken = createRefreshToken(user);
+        boolean rememberMeSession = refreshToken.getExpiresAt()
+                .isAfter(LocalDateTime.now().plusDays(DEFAULT_REFRESH_TOKEN_DAYS));
+        String newRefreshToken = createRefreshToken(user, rememberMeSession);
 
         log.info("Token refreshed for user: {}", user.getEmail());
 
@@ -235,13 +317,19 @@ public class AuthService {
     }
 
     private String createRefreshToken(User user) {
+        return createRefreshToken(user, false);
+    }
+
+    private String createRefreshToken(User user, boolean rememberMe) {
         // Delete existing refresh tokens for this user (optional - for single session)
         // refreshTokenRepository.deleteByUser(user);
 
         RefreshToken refreshToken = RefreshToken.builder()
                 .user(user)
                 .token(UUID.randomUUID().toString())
-                .expiresAt(LocalDateTime.now().plusDays(7))
+                .expiresAt(LocalDateTime.now().plusDays(
+                        rememberMe ? REMEMBER_ME_REFRESH_TOKEN_DAYS : DEFAULT_REFRESH_TOKEN_DAYS
+                ))
                 .build();
 
         refreshTokenRepository.save(refreshToken);

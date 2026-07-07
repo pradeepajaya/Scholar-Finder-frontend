@@ -4,12 +4,12 @@ import com.scholarfinder.content.dto.CategoryDto;
 import com.scholarfinder.content.entity.Category;
 import com.scholarfinder.content.repository.CategoryRepository;
 import jakarta.persistence.EntityNotFoundException;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -75,7 +75,7 @@ public class CategoryService {
     public List<CategoryDto> getAllActiveCategories() {
         return categoryRepository.findByIsActiveTrueOrderByDisplayOrderAsc()
             .stream()
-            .map(this::mapToDto)
+            .map(category -> mapToDto(requireCategory(category)))
             .collect(Collectors.toList());
     }
 
@@ -86,7 +86,7 @@ public class CategoryService {
     public List<CategoryDto> getCategoriesByContentType(String contentType) {
         return categoryRepository.findActiveByContentType(contentType)
             .stream()
-            .map(this::mapToDto)
+            .map(category -> mapToDto(requireCategory(category)))
             .collect(Collectors.toList());
     }
 
@@ -97,7 +97,7 @@ public class CategoryService {
     public List<CategoryDto> getRootCategories() {
         return categoryRepository.findRootCategories()
             .stream()
-            .map(this::mapToDto)
+            .map(category -> mapToDto(requireCategory(category)))
             .collect(Collectors.toList());
     }
 
@@ -109,7 +109,7 @@ public class CategoryService {
         Long safeParentId = requireId(parentId);
         return categoryRepository.findByParentIdAndIsActiveTrue(safeParentId)
             .stream()
-            .map(this::mapToDto)
+            .map(category -> mapToDto(requireCategory(category)))
             .collect(Collectors.toList());
     }
 
@@ -195,16 +195,17 @@ public class CategoryService {
         return slug;
     }
 
-    @NonNull
-    private Long requireId(Long id) {
+    private @NonNull Long requireId(@Nullable Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Category id is required");
         }
         return id;
     }
 
-    @NonNull
-    private Category requireCategory(Category category) {
-        return Objects.requireNonNull(category, "Category is required");
+    private @NonNull Category requireCategory(@Nullable Category category) {
+        if (category == null) {
+            throw new IllegalArgumentException("Category is required");
+        }
+        return category;
     }
 }

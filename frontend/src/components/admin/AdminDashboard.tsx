@@ -1,5 +1,8 @@
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 import { 
   Users, 
   Building2, 
@@ -9,10 +12,67 @@ import {
   CheckCircle,
   AlertCircle,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Award,
+  Loader2
 } from 'lucide-react';
+import { contentApi, TestimonialDto } from '../../services/api';
 
-export function AdminDashboard() {
+interface AdminDashboardProps {
+  onOpenStoryReviews?: () => void;
+  onPendingStoryChange?: () => void;
+}
+
+export function AdminDashboard({
+  onOpenStoryReviews,
+  onPendingStoryChange,
+}: AdminDashboardProps) {
+  const [pendingStories, setPendingStories] = useState<TestimonialDto[]>([]);
+  const [isLoadingStories, setIsLoadingStories] = useState(false);
+  const [storyActionId, setStoryActionId] = useState<number | null>(null);
+
+  const loadPendingStories = useCallback(async () => {
+    setIsLoadingStories(true);
+    try {
+      const response = await contentApi.getAllTestimonials('PENDING');
+      setPendingStories(response.data ?? []);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to load pending success stories',
+      );
+    } finally {
+      setIsLoadingStories(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPendingStories();
+  }, [loadPendingStories]);
+
+  const handleAcceptStory = async (story: TestimonialDto) => {
+    setStoryActionId(story.id);
+    try {
+      await contentApi.approveTestimonial(story.id, {
+        reviewedBy: 'Admin',
+      });
+      setPendingStories((current) =>
+        current.filter((item) => item.id !== story.id),
+      );
+      onPendingStoryChange?.();
+      toast.success('Success story accepted and published');
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to accept success story',
+      );
+    } finally {
+      setStoryActionId(null);
+    }
+  };
+
   const stats = [
     {
       label: 'Total Students',
@@ -39,8 +99,8 @@ export function AdminDashboard() {
       color: 'purple',
     },
     {
-      label: 'Pending Approvals',
-      value: '23',
+      label: 'Pending Stories',
+      value: String(pendingStories.length),
       change: '-5%',
       trend: 'down',
       icon: Clock,
@@ -160,6 +220,83 @@ export function AdminDashboard() {
           );
         })}
       </div>
+
+      <Card className="p-6">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">
+              Success Stories Sent for Review
+            </h3>
+            <p className="text-sm text-slate-600">
+              Accept submitted stories here or open the full review queue.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary" className="bg-orange-100 text-orange-700">
+              {pendingStories.length} Pending
+            </Badge>
+            <Button variant="outline" onClick={onOpenStoryReviews}>
+              Review All
+            </Button>
+          </div>
+        </div>
+
+        {isLoadingStories ? (
+          <div className="flex items-center justify-center gap-3 rounded-lg bg-slate-50 py-8 text-slate-600">
+            <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+            Loading pending success stories...
+          </div>
+        ) : pendingStories.length === 0 ? (
+          <div className="rounded-lg bg-slate-50 px-4 py-8 text-center">
+            <Award className="mx-auto mb-2 h-9 w-9 text-slate-300" />
+            <p className="font-medium text-slate-900">No stories waiting</p>
+            <p className="mt-1 text-sm text-slate-500">
+              New submissions will appear here with an accept option.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pendingStories.slice(0, 3).map((story) => (
+              <div
+                key={story.id}
+                className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 lg:flex-row lg:items-start lg:justify-between"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-semibold text-slate-900">
+                      {story.isAnonymous
+                        ? 'Anonymous Scholar'
+                        : story.scholarName || 'Scholar'}
+                    </h4>
+                    <Badge className="bg-amber-100 text-amber-700">
+                      PENDING
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {story.scholarshipName}
+                    {story.university ? ` - ${story.university}` : ''}
+                  </p>
+                  <p className="mt-2 line-clamp-2 text-sm leading-5 text-slate-600">
+                    {story.testimonialText}
+                  </p>
+                </div>
+                <Button
+                  className="bg-green-400 text-black hover:bg-green-500"
+                  onClick={() => handleAcceptStory(story)}
+                  disabled={storyActionId === story.id}
+                >
+                  {storyActionId === story.id ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                  )}
+                  Accept & Publish
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pending Institutions */}

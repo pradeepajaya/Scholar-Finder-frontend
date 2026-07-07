@@ -15,6 +15,9 @@ public class Testimonial {
     @Column(name = "scholar_name")
     private String scholarName;
 
+    @Column(name = "submitter_email")
+    private String submitterEmail;
+
     @Column(name = "scholarship_name", nullable = false)
     private String scholarshipName;
 
@@ -42,6 +45,15 @@ public class Testimonial {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
+
+    @Column(name = "reviewed_by")
+    private String reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -62,6 +74,14 @@ public class Testimonial {
 
     public void setScholarName(String scholarName) {
         this.scholarName = scholarName;
+    }
+
+    public String getSubmitterEmail() {
+        return submitterEmail;
+    }
+
+    public void setSubmitterEmail(String submitterEmail) {
+        this.submitterEmail = submitterEmail;
     }
 
     public String getScholarshipName() {
@@ -134,6 +154,30 @@ public class Testimonial {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getRejectionReason() {
+        return rejectionReason;
+    }
+
+    public void setRejectionReason(String rejectionReason) {
+        this.rejectionReason = rejectionReason;
+    }
+
+    public String getReviewedBy() {
+        return reviewedBy;
+    }
+
+    public void setReviewedBy(String reviewedBy) {
+        this.reviewedBy = reviewedBy;
+    }
+
+    public LocalDateTime getReviewedAt() {
+        return reviewedAt;
+    }
+
+    public void setReviewedAt(LocalDateTime reviewedAt) {
+        this.reviewedAt = reviewedAt;
     }
 
     public LocalDateTime getCreatedAt() {

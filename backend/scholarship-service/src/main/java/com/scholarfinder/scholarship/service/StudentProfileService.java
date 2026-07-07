@@ -27,11 +27,23 @@ public class StudentProfileService {
             throw new IllegalArgumentException("Full name is required");
         }
 
-        Long userId = request.getUserId() != null ? request.getUserId() : generateUserId();
+        if (request.getUserId() == null) {
+            throw new IllegalArgumentException("Student account is required before saving a profile");
+        }
+        if (!hasText(request.getEmail())) {
+            throw new IllegalArgumentException("Email is required");
+        }
+
+        Long userId = request.getUserId();
+        String email = request.getEmail().trim().toLowerCase();
+        if (!studentProfileRepository.existsActiveStudentAuthUser(userId, email)) {
+            throw new IllegalArgumentException("Student account could not be verified. Please sign in again.");
+        }
+
         StudentProfile profile = studentProfileRepository.findByUserId(userId)
             .orElseGet(StudentProfile::new);
 
-        mapRequestToProfile(request, profile, userId);
+        mapRequestToProfile(request, profile, userId, email);
 
         LocalDateTime now = LocalDateTime.now();
         if (profile.getCreatedAt() == null) {
@@ -132,10 +144,10 @@ public class StudentProfileService {
             .build();
     }
 
-    private void mapRequestToProfile(StudentProfileRequest request, StudentProfile profile, Long userId) {
+    private void mapRequestToProfile(StudentProfileRequest request, StudentProfile profile, Long userId, String email) {
         profile.setUserId(userId);
         profile.setFullName(request.getFullName().trim());
-        profile.setEmail(request.getEmail());
+        profile.setEmail(email);
         profile.setDateOfBirth(request.getDateOfBirth());
         profile.setGender(request.getGender());
         profile.setNationality(request.getNationality());
@@ -218,11 +230,4 @@ public class StudentProfileService {
         return value != null && !value.isBlank();
     }
 
-    private Long generateUserId() {
-        long candidate = System.currentTimeMillis();
-        while (studentProfileRepository.existsByUserId(candidate)) {
-            candidate++;
-        }
-        return candidate;
-    }
 }

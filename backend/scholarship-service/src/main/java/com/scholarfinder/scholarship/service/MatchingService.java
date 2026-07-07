@@ -7,6 +7,7 @@ import com.scholarfinder.scholarship.entity.Scholarship;
 import com.scholarfinder.scholarship.entity.StudentProfile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -131,7 +132,7 @@ public class MatchingService {
 
         if (eligibleLevels != null && studentLevel != null) {
             boolean levelMatches = Arrays.stream(eligibleLevels)
-                .map(this::normalizeEducationLevel)
+                .map(level -> normalizeEducationLevel(level))
                 .filter(Objects::nonNull)
                 .anyMatch(level -> level.equals(studentLevel));
             
@@ -794,7 +795,7 @@ public class MatchingService {
                                                 List<UnmatchedCriterion> unmatchedCriteria) {
         // Check for mandatory unmatched criteria
         Optional<UnmatchedCriterion> mandatory = unmatchedCriteria.stream()
-            .filter(UnmatchedCriterion::isMandatory)
+            .filter(criterion -> criterion != null && criterion.isMandatory())
             .findFirst();
         
         if (mandatory.isPresent()) {
@@ -814,7 +815,7 @@ public class MatchingService {
                acceptableTests.contains(test2.toUpperCase());
     }
 
-    private String normalizeEducationLevel(String level) {
+    private @Nullable String normalizeEducationLevel(@Nullable String level) {
         if (level == null) {
             return null;
         }
@@ -871,10 +872,10 @@ public class MatchingService {
     }
 
     private boolean hasValues(String[] values) {
-        return values != null && Arrays.stream(values).anyMatch(this::hasText);
+        return values != null && Arrays.stream(values).anyMatch(value -> hasText(value));
     }
 
-    private boolean hasText(String value) {
+    private boolean hasText(@Nullable String value) {
         return value != null && !value.isBlank();
     }
 
@@ -894,7 +895,7 @@ public class MatchingService {
             || scholarship.contains(preferred);
     }
 
-    private String normalizePreferenceValue(String value) {
+    private @Nullable String normalizePreferenceValue(@Nullable String value) {
         if (!hasText(value)) {
             return null;
         }
@@ -921,7 +922,7 @@ public class MatchingService {
             || value.equals("various programs");
     }
 
-    private String normalizeScholarshipType(String type) {
+    private @Nullable String normalizeScholarshipType(@Nullable String type) {
         String normalized = normalizePreferenceValue(type);
         if (normalized == null) {
             return null;
@@ -943,7 +944,7 @@ public class MatchingService {
         return normalized.toUpperCase(Locale.ROOT).replace(" ", "_");
     }
 
-    private String formatScholarshipType(String type) {
+    private String formatScholarshipType(@Nullable String type) {
         if (type == null) {
             return "Not specified";
         }
@@ -963,8 +964,8 @@ public class MatchingService {
         }
 
         return Arrays.stream(values)
-            .filter(this::hasText)
-            .map(String::trim)
+            .filter(value -> hasText(value))
+            .map(value -> value == null ? "" : value.trim())
             .collect(java.util.stream.Collectors.joining(", "));
     }
 

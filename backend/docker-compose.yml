@@ -45,25 +45,25 @@ services:
       - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     ports:
-      - "9400:9200"
-      - "9401:9300"
+      - "19200:9200"
+      - "19300:9300"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     networks:
       - scholar-network
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 40s
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 60s
 
   # Service Discovery - Eureka Server
   discovery-service:
     build: ./discovery-service
     container_name: scholar-finder-discovery
     ports:
-      - "${DISCOVERY_PORT:-8761}:8761"
+      - "9761:8761"
     networks:
       - scholar-network
     healthcheck:
@@ -77,13 +77,12 @@ services:
     build: ./api-gateway
     container_name: scholar-finder-gateway
     ports:
-      - "${API_GATEWAY_HOST_PORT:-8080}:8080"
+      - "8080:8080"
     environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka:eureka123@discovery-service:8761/eureka/
       - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_DATA_REDIS_HOST=redis
-      - SPRING_DATA_REDIS_PORT=6379
     depends_on:
-      redis:
+      discovery-service:
         condition: service_healthy
     networks:
       - scholar-network
@@ -93,7 +92,7 @@ services:
     build: ./auth-service
     container_name: scholar-finder-auth
     ports:
-      - "${AUTH_SERVICE_HOST_PORT:-8081}:8081"
+      - "8081:8081"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
       - SPRING_DATASOURCE_USERNAME=scholarfinder
@@ -103,9 +102,9 @@ services:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka:eureka123@discovery-service:8761/eureka/
       - SPRING_PROFILES_ACTIVE=docker
       - JWT_SECRET=your-256-bit-secret-key-here-make-it-long-and-secure-for-production
-      # JWT secret must be base64-encoded for the JwtTokenProvider (or use a raw key handled by the app)
       - JWT_SECRET=c3VwZXJzZWNyZXRrZXlzdXBlcnNlY3JldGtleTEyMzQ1Ng==
       - JWT_EXPIRATION=86400000
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8085
     depends_on:
       postgres:
         condition: service_healthy
@@ -116,34 +115,12 @@ services:
     networks:
       - scholar-network
 
-  # User Service
-  # user-service:
-  #   build: ./user-service
-  #   container_name: scholar-finder-user
-  #   ports:
-  #     - "8082:8082"
-  #   environment:
-  #     - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
-  #     - SPRING_DATASOURCE_USERNAME=scholarfinder
-  #     - SPRING_DATASOURCE_PASSWORD=scholarfinder123
-  #     - SPRING_REDIS_HOST=redis
-  #     - SPRING_REDIS_PORT=6379
-  #     - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-service:8761/eureka/
-  #     - SPRING_PROFILES_ACTIVE=docker
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     discovery-service:
-  #       condition: service_healthy
-  #   networks:
-  #     - scholar-network
-
   # Scholarship Service
   scholarship-service:
     build: ./scholarship-service
     container_name: scholar-finder-scholarship
     ports:
-      - "${SCHOLARSHIP_SERVICE_HOST_PORT:-8083}:8083"
+      - "8083:8083"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
       - SPRING_DATASOURCE_USERNAME=scholarfinder
@@ -166,13 +143,15 @@ services:
     build: ./content-service
     container_name: scholar-finder-content
     ports:
-      - "${CONTENT_SERVICE_HOST_PORT:-18084}:8084"
+      - "8084:8084"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
       - SPRING_DATASOURCE_USERNAME=scholarfinder
       - SPRING_DATASOURCE_PASSWORD=scholarfinder123
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka:eureka123@discovery-service:8761/eureka/
       - SPRING_PROFILES_ACTIVE=docker
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8085
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@scholarfinder.lk}
     depends_on:
       postgres:
         condition: service_healthy
@@ -185,16 +164,18 @@ services:
   notification-service:
     build: ./notification-service
     container_name: scholar-finder-notification
-    env_file:
-      - .env
     ports:
-      - "${NOTIFICATION_SERVICE_HOST_PORT:-8085}:8085"
+      - "8085:8085"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/scholarfinder_db
       - SPRING_DATASOURCE_USERNAME=scholarfinder
       - SPRING_DATASOURCE_PASSWORD=scholarfinder123
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka:eureka123@discovery-service:8761/eureka/
       - SPRING_PROFILES_ACTIVE=docker
+      - MAIL_HOST=${MAIL_HOST:-sandbox.smtp.mailtrap.io}
+      - MAIL_PORT=${MAIL_PORT:-2525}
+      - MAIL_USERNAME=${MAIL_USERNAME:-}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

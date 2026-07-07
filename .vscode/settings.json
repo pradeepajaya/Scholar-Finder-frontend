@@ -1,7 +1,7 @@
 {
     "java.compile.nullAnalysis.mode": "automatic",
     "java.configuration.updateBuildConfiguration": "interactive",
-    "java.jdt.ls.vmargs": "-javaagent:${env:USERPROFILE}\\.m2\\repository\\org\\projectlombok\\lombok\\1.18.30\\lombok-1.18.30.jar",
+    "java.jdt.ls.vmargs": "-javaagent:${env:USERPROFILE}\\.m2\\repository\\org\\projectlombok\\lombok\\1.18.46\\lombok-1.18.46.jar",
     "java.jdt.ls.java.home": "C:\\Program Files\\Microsoft\\jdk-17.0.14.7-hotspot",
     "java.configuration.runtimes": [
         {

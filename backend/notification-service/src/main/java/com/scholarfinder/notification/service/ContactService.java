@@ -6,7 +6,8 @@ import com.scholarfinder.notification.repository.ContactMessageRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -257,7 +258,7 @@ public class ContactService {
     public List<ContactMessageDto> getRecentMessages(int limit) {
         return contactRepository.findRecent(PageRequest.of(0, limit))
             .stream()
-            .map(this::mapToDto)
+            .map(message -> mapToDto(requireMessage(message)))
             .collect(Collectors.toList());
     }
 
@@ -268,7 +269,7 @@ public class ContactService {
     public List<ContactMessageDto> getHighPriorityMessages() {
         return contactRepository.findHighPriorityNew()
             .stream()
-            .map(this::mapToDto)
+            .map(message -> mapToDto(requireMessage(message)))
             .collect(Collectors.toList());
     }
 
@@ -317,7 +318,7 @@ public class ContactService {
 
     private PagedResponse<ContactMessageDto> createPagedResponse(Page<ContactMessage> page) {
         List<ContactMessageDto> content = page.getContent().stream()
-            .map(this::mapToDto)
+            .map(message -> mapToDto(requireMessage(message)))
             .collect(Collectors.toList());
 
         return new PagedResponse<>(
@@ -331,11 +332,17 @@ public class ContactService {
         );
     }
 
-    @NonNull
-    private Long requireId(Long id) {
+    private @NonNull Long requireId(@Nullable Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Contact message id is required");
         }
         return id;
+    }
+
+    private @NonNull ContactMessage requireMessage(@Nullable ContactMessage message) {
+        if (message == null) {
+            throw new IllegalArgumentException("Contact message is required");
+        }
+        return message;
     }
 }

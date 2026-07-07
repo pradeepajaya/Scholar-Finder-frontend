@@ -8,6 +8,7 @@ public class TestimonialDto {
 
     private Long id;
     private String scholarName;
+    private String submitterEmail;
     private String scholarshipName;
     private Integer yearCompleted;
     private String fieldOfStudy;
@@ -17,21 +18,35 @@ public class TestimonialDto {
     private Boolean isAnonymous;
     private Boolean isFeatured;
     private String status;
+    private String rejectionReason;
+    private String reviewedBy;
+    private LocalDateTime reviewedAt;
     private LocalDateTime createdAt;
 
     public static TestimonialDto fromEntity(Testimonial testimonial) {
+        return fromEntity(testimonial, true);
+    }
+
+    public static TestimonialDto fromEntity(Testimonial testimonial, boolean includePrivateFields) {
         TestimonialDto dto = new TestimonialDto();
+        boolean anonymous = Boolean.TRUE.equals(testimonial.getIsAnonymous());
         dto.setId(testimonial.getId());
-        dto.setScholarName(testimonial.getScholarName());
+        dto.setScholarName(!includePrivateFields && anonymous ? null : testimonial.getScholarName());
         dto.setScholarshipName(testimonial.getScholarshipName());
         dto.setYearCompleted(testimonial.getYearCompleted());
         dto.setFieldOfStudy(testimonial.getFieldOfStudy());
         dto.setUniversity(testimonial.getUniversity());
         dto.setTestimonialText(testimonial.getTestimonialText());
         dto.setRating(testimonial.getRating());
-        dto.setIsAnonymous(Boolean.TRUE.equals(testimonial.getIsAnonymous()));
+        dto.setIsAnonymous(anonymous);
         dto.setIsFeatured(Boolean.TRUE.equals(testimonial.getIsFeatured()));
         dto.setStatus(testimonial.getStatus());
+        if (includePrivateFields) {
+            dto.setSubmitterEmail(testimonial.getSubmitterEmail());
+            dto.setRejectionReason(testimonial.getRejectionReason());
+            dto.setReviewedBy(testimonial.getReviewedBy());
+            dto.setReviewedAt(testimonial.getReviewedAt());
+        }
         dto.setCreatedAt(testimonial.getCreatedAt());
         return dto;
     }
@@ -50,6 +65,14 @@ public class TestimonialDto {
 
     public void setScholarName(String scholarName) {
         this.scholarName = scholarName;
+    }
+
+    public String getSubmitterEmail() {
+        return submitterEmail;
+    }
+
+    public void setSubmitterEmail(String submitterEmail) {
+        this.submitterEmail = submitterEmail;
     }
 
     public String getScholarshipName() {
@@ -122,6 +145,30 @@ public class TestimonialDto {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getRejectionReason() {
+        return rejectionReason;
+    }
+
+    public void setRejectionReason(String rejectionReason) {
+        this.rejectionReason = rejectionReason;
+    }
+
+    public String getReviewedBy() {
+        return reviewedBy;
+    }
+
+    public void setReviewedBy(String reviewedBy) {
+        this.reviewedBy = reviewedBy;
+    }
+
+    public LocalDateTime getReviewedAt() {
+        return reviewedAt;
+    }
+
+    public void setReviewedAt(LocalDateTime reviewedAt) {
+        this.reviewedAt = reviewedAt;
     }
 
     public LocalDateTime getCreatedAt() {

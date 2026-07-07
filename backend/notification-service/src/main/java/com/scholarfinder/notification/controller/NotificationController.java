@@ -7,6 +7,7 @@ import com.scholarfinder.notification.dto.AnnouncementResponse;
 import com.scholarfinder.notification.dto.ApiResponse;
 import com.scholarfinder.notification.dto.AudienceCountsResponse;
 import com.scholarfinder.notification.dto.PagedResponse;
+import com.scholarfinder.notification.entity.EmailNotification;
 import com.scholarfinder.notification.service.AdminAlertService;
 import com.scholarfinder.notification.service.AnnouncementService;
 import com.scholarfinder.notification.service.EmailService;
@@ -47,7 +48,7 @@ public class NotificationController {
         log.info("Received alert request for: {} (type: {})", request.getRecipientEmail(), request.getNotificationType());
 
         try {
-            emailService.sendAlertEmail(
+            EmailNotification notification = emailService.sendAlertEmail(
                 request.getRecipientEmail(),
                 request.getRecipientName(),
                 request.getSubject(),
@@ -56,6 +57,14 @@ public class NotificationController {
                 request.getReferenceId(),
                 request.getReferenceType()
             );
+
+            if (!"SENT".equalsIgnoreCase(notification.getStatus())) {
+                String errorMessage = notification.getErrorMessage() == null || notification.getErrorMessage().isBlank()
+                    ? "Email could not be delivered"
+                    : notification.getErrorMessage();
+                return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error("Failed to send alert: " + errorMessage));
+            }
 
             return ResponseEntity.ok(ApiResponse.success("Alert sent successfully", "Notification dispatched"));
         } catch (Exception e) {

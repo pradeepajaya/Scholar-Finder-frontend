@@ -75,8 +75,8 @@ public class EmailService {
     /**
      * Send an alert email and keep its notification metadata for auditing.
      */
-    public void sendAlertEmail(String to, String recipientName, String subject, String body,
-                               String notificationType, Long referenceId, String referenceType) {
+    public EmailNotification sendAlertEmail(String to, String recipientName, String subject, String body,
+                                            String notificationType, Long referenceId, String referenceType) {
         EmailNotification notification = new EmailNotification();
         notification.setRecipientEmail(to);
         notification.setRecipientName(recipientName);
@@ -88,7 +88,7 @@ public class EmailService {
         notification.setStatus("PENDING");
 
         emailRepository.save(notification);
-        processEmail(notification);
+        return processEmail(notification);
     }
 
     /**

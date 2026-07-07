@@ -18,6 +18,7 @@ import {
   Target,
   Bell,
 } from "lucide-react";
+import { PasswordResetDialog } from "@/components/PasswordResetDialog";
 import { authApi, STUDENT_ID_KEY } from "@/services/api";
 
 interface StudentLoginProps {
@@ -25,11 +26,18 @@ interface StudentLoginProps {
   onBack: () => void;
 }
 
+const REMEMBERED_STUDENT_EMAIL_KEY = "scholar_finder_student_login_email";
+
 const StudentLogin = ({ onLogin, onBack }: StudentLoginProps) => {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(
+    () => localStorage.getItem(REMEMBERED_STUDENT_EMAIL_KEY) ?? "",
+  );
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(
+    () => !!localStorage.getItem(REMEMBERED_STUDENT_EMAIL_KEY),
+  );
   const [showPassword, setShowPassword] = useState(false);
+  const [isResetOpen, setIsResetOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -53,6 +61,11 @@ const StudentLogin = ({ onLogin, onBack }: StudentLoginProps) => {
         }
 
         localStorage.setItem(STUDENT_ID_KEY, String(response.data.user.id));
+        if (rememberMe) {
+          localStorage.setItem(REMEMBERED_STUDENT_EMAIL_KEY, normalizedEmail);
+        } else {
+          localStorage.removeItem(REMEMBERED_STUDENT_EMAIL_KEY);
+        }
         onLogin();
       } else {
         throw new Error(response.message || "Login failed");
@@ -319,6 +332,7 @@ const StudentLogin = ({ onLogin, onBack }: StudentLoginProps) => {
                 </label>
                 <button
                   type="button"
+                  onClick={() => setIsResetOpen(true)}
                   className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                 >
                   Forgot password?
@@ -392,6 +406,13 @@ const StudentLogin = ({ onLogin, onBack }: StudentLoginProps) => {
           </Card>
         </div>
       </div>
+
+      <PasswordResetDialog
+        open={isResetOpen}
+        onOpenChange={setIsResetOpen}
+        defaultEmail={email}
+        theme="blue"
+      />
     </div>
   );
 };

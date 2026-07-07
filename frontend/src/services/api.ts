@@ -26,6 +26,20 @@ export interface StudentAccountRecoveryRequest {
   confirmPassword: string;
 }
 
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ForgotPasswordResponse {
+  expiresAt?: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+  confirmPassword: string;
+}
+
 export interface UserDto {
   id: number;
   email: string;
@@ -306,6 +320,23 @@ export interface StudentApplicationResponse {
   updatedAt: string;
   matchPercentage?: number;
   requiredDocuments?: string[];
+  applicantName?: string;
+  applicantEmail?: string;
+  applicantPhone?: string;
+  currentEducation?: string;
+  intendedLevel?: string;
+  fieldOfStudy?: string;
+  alStream?: string;
+  alResults?: string;
+  zScore?: string;
+  gpa?: string;
+  englishTest?: string;
+  englishScore?: string;
+  householdIncome?: string;
+  achievements?: string;
+  qualificationSummary?: string;
+  coverLetter?: string;
+  submittedDocuments?: ApplicationDocumentDto[];
 }
 
 export interface InstitutionApplicationResponse {
@@ -507,6 +538,42 @@ export interface BlogPostRequest {
   publish?: boolean;
 }
 
+export interface TestimonialDto {
+  id: number;
+  scholarName: string | null;
+  submitterEmail?: string | null;
+  scholarshipName: string;
+  yearCompleted: number | null;
+  fieldOfStudy: string | null;
+  university: string | null;
+  testimonialText: string;
+  rating: number | null;
+  isAnonymous: boolean;
+  isFeatured: boolean;
+  status: string;
+  rejectionReason?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+}
+
+export interface TestimonialRequest {
+  scholarName: string;
+  submitterEmail: string;
+  scholarshipName: string;
+  yearCompleted?: number;
+  fieldOfStudy?: string;
+  university?: string;
+  testimonialText: string;
+  rating?: number;
+  isAnonymous?: boolean;
+}
+
+export interface TestimonialReviewRequest {
+  rejectionReason?: string;
+  reviewedBy?: string;
+}
+
 export interface PagedResponse<T> {
   content: T[];
   page: number;
@@ -523,32 +590,64 @@ export interface PagedResponse<T> {
 const TOKEN_KEY = 'scholar_finder_token';
 const REFRESH_TOKEN_KEY = 'scholar_finder_refresh_token';
 const USER_KEY = 'scholar_finder_user';
+const AUTH_STORAGE_KEYS = [TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY];
+
+const getStoredAuthValue = (key: string): string | null =>
+  localStorage.getItem(key) ?? sessionStorage.getItem(key);
+
+const getAuthStorage = (): Storage => {
+  if (localStorage.getItem(TOKEN_KEY)) return localStorage;
+  if (sessionStorage.getItem(TOKEN_KEY)) return sessionStorage;
+  return localStorage;
+};
+
+const clearAuthValues = (storage: Storage): void => {
+  AUTH_STORAGE_KEYS.forEach((key) => storage.removeItem(key));
+};
+
+const setAuthValue = (key: string, value: string): void => {
+  const storage = getAuthStorage();
+  const otherStorage = storage === localStorage ? sessionStorage : localStorage;
+  storage.setItem(key, value);
+  otherStorage.removeItem(key);
+};
 
 export const tokenService = {
-  getToken: (): string | null => localStorage.getItem(TOKEN_KEY),
+  getToken: (): string | null => getStoredAuthValue(TOKEN_KEY),
   
-  setToken: (token: string): void => localStorage.setItem(TOKEN_KEY, token),
+  setToken: (token: string): void => setAuthValue(TOKEN_KEY, token),
   
-  getRefreshToken: (): string | null => localStorage.getItem(REFRESH_TOKEN_KEY),
+  getRefreshToken: (): string | null => getStoredAuthValue(REFRESH_TOKEN_KEY),
   
-  setRefreshToken: (token: string): void => localStorage.setItem(REFRESH_TOKEN_KEY, token),
+  setRefreshToken: (token: string): void => setAuthValue(REFRESH_TOKEN_KEY, token),
   
   getUser: (): UserDto | null => {
-    const user = localStorage.getItem(USER_KEY);
+    const user = getStoredAuthValue(USER_KEY);
     return user ? JSON.parse(user) : null;
   },
   
-  setUser: (user: UserDto): void => localStorage.setItem(USER_KEY, JSON.stringify(user)),
+  setUser: (user: UserDto): void => setAuthValue(USER_KEY, JSON.stringify(user)),
+
+  setAuthSession: (auth: AuthResponse, rememberMe = false): void => {
+    const storage = rememberMe ? localStorage : sessionStorage;
+    const otherStorage = rememberMe ? sessionStorage : localStorage;
+
+    clearAuthValues(otherStorage);
+    localStorage.removeItem(STUDENT_ID_KEY);
+    localStorage.removeItem(STUDENT_PROFILE_CACHE_KEY);
+    storage.setItem(TOKEN_KEY, auth.accessToken);
+    storage.setItem(REFRESH_TOKEN_KEY, auth.refreshToken);
+    storage.setItem(USER_KEY, JSON.stringify(auth.user));
+  },
   
   clearTokens: (): void => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    clearAuthValues(localStorage);
+    clearAuthValues(sessionStorage);
     localStorage.removeItem(STUDENT_ID_KEY);
     localStorage.removeItem(STUDENT_PROFILE_CACHE_KEY);
   },
   
-  isAuthenticated: (): boolean => !!localStorage.getItem(TOKEN_KEY),
+  isAuthenticated: (): boolean => !!getStoredAuthValue(TOKEN_KEY),
 };
 
 export const studentProfileCache = {
@@ -655,7 +754,18 @@ class ApiClient {
     const data = await this.parseResponse<T>(response);
 
     if (!response.ok) {
-      throw new Error(data.message || 'An error occurred');
+      const validationDetails =
+        data.data && typeof data.data === 'object' && !Array.isArray(data.data)
+          ? Object.values(data.data as Record<string, unknown>)
+              .map((value) => String(value))
+              .filter(Boolean)
+              .join('\n')
+          : '';
+      throw new Error(
+        validationDetails
+          ? `${data.message || 'Validation failed'}: ${validationDetails}`
+          : data.message || 'An error occurred',
+      );
     }
 
     return data;
@@ -695,9 +805,7 @@ class ApiClient {
     });
 
     if (response.success && response.data) {
-      tokenService.setToken(response.data.accessToken);
-      tokenService.setRefreshToken(response.data.refreshToken);
-      tokenService.setUser(response.data.user);
+      tokenService.setAuthSession(response.data, request.rememberMe === true);
     }
 
     return response;
@@ -710,9 +818,7 @@ class ApiClient {
     });
 
     if (response.success && response.data) {
-      tokenService.setToken(response.data.accessToken);
-      tokenService.setRefreshToken(response.data.refreshToken);
-      tokenService.setUser(response.data.user);
+      tokenService.setAuthSession(response.data, true);
     }
 
     return response;
@@ -730,9 +836,7 @@ class ApiClient {
     );
 
     if (response.success && response.data) {
-      tokenService.setToken(response.data.accessToken);
-      tokenService.setRefreshToken(response.data.refreshToken);
-      tokenService.setUser(response.data.user);
+      tokenService.setAuthSession(response.data, true);
     }
 
     return response;
@@ -750,12 +854,26 @@ class ApiClient {
     );
 
     if (response.success && response.data) {
-      tokenService.setToken(response.data.accessToken);
-      tokenService.setRefreshToken(response.data.refreshToken);
-      tokenService.setUser(response.data.user);
+      tokenService.setAuthSession(response.data, true);
     }
 
     return response;
+  }
+
+  async forgotPassword(
+    request: ForgotPasswordRequest,
+  ): Promise<ApiResponse<ForgotPasswordResponse>> {
+    return this.request<ForgotPasswordResponse>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async resetPassword(request: ResetPasswordRequest): Promise<ApiResponse<void>> {
+    return this.request<void>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
   }
 
   async logout(): Promise<void> {
@@ -809,6 +927,10 @@ export const authApi = {
     apiClient.recoverStudentAccount(request),
   registerOrRecoverStudent: (request: RegisterRequest) =>
     apiClient.registerOrRecoverStudent(request),
+  forgotPassword: (request: ForgotPasswordRequest) =>
+    apiClient.forgotPassword(request),
+  resetPassword: (request: ResetPasswordRequest) =>
+    apiClient.resetPassword(request),
   logout: () => apiClient.logout(),
   getCurrentUser: () => apiClient.getCurrentUser(),
   verifyEmail: (token: string) => apiClient.verifyEmail(token),
@@ -905,6 +1027,19 @@ export const contentApi = {
     apiClient.post<BlogPostDto>(`/blogs/${id}/archive`, {}),
   draftBlogPost: (id: number) =>
     apiClient.post<BlogPostDto>(`/blogs/${id}/draft`, {}),
+
+  getTestimonials: () =>
+    apiClient.get<TestimonialDto[]>('/testimonials'),
+  submitTestimonial: (request: TestimonialRequest) =>
+    apiClient.post<TestimonialDto>('/testimonials', request),
+  getAllTestimonials: (status?: string) =>
+    apiClient.get<TestimonialDto[]>(
+      `/testimonials/admin${status ? `?status=${encodeURIComponent(status)}` : ''}`,
+    ),
+  approveTestimonial: (id: number, request: TestimonialReviewRequest = {}) =>
+    apiClient.post<TestimonialDto>(`/testimonials/admin/${id}/approve`, request),
+  rejectTestimonial: (id: number, request: TestimonialReviewRequest) =>
+    apiClient.post<TestimonialDto>(`/testimonials/admin/${id}/reject`, request),
 };
 
 export default apiClient;

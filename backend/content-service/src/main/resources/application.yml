@@ -56,6 +56,12 @@ content:
     page-size: 12
     recent-count: 6
 
+app:
+  notifications:
+    base-url: ${NOTIFICATION_SERVICE_URL:http://localhost:8085}
+  mail:
+    admin-email: ${ADMIN_EMAIL:admin@scholarfinder.lk}
+
 # Logging
 logging:
   level:

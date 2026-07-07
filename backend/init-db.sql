@@ -500,6 +500,7 @@ ON CONFLICT (slug) DO NOTHING;
 CREATE TABLE IF NOT EXISTS content.testimonials (
     id BIGSERIAL PRIMARY KEY,
     scholar_name VARCHAR(255), -- NULL for anonymous
+    submitter_email VARCHAR(255),
     scholarship_name VARCHAR(255) NOT NULL,
     year_completed INT,
     field_of_study VARCHAR(255),
@@ -508,7 +509,10 @@ CREATE TABLE IF NOT EXISTS content.testimonials (
     rating INT CHECK (rating >= 1 AND rating <= 5),
     is_anonymous BOOLEAN DEFAULT TRUE,
     is_featured BOOLEAN DEFAULT FALSE,
-    status VARCHAR(50) DEFAULT 'PUBLISHED', -- PUBLISHED, DRAFT, ARCHIVED
+    status VARCHAR(50) DEFAULT 'PUBLISHED', -- PENDING, PUBLISHED, REJECTED, DRAFT, ARCHIVED
+    rejection_reason TEXT,
+    reviewed_by VARCHAR(255),
+    reviewed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -643,7 +647,7 @@ ON CONFLICT (email) DO NOTHING;
 
 -- Create test student user (password: student123)
 INSERT INTO auth.users (email, password, role, is_active, is_verified)
-VALUES ('student@scholarfinder.lk', '$2a$10$dG7F8qKLJHk/CZxMFLvN3eWC0qYLhG1FJLqjZk3EXQpPq2z1WzBKG', 'STUDENT', true, true)
+VALUES ('student@scholarfinder.lk', '$2a$06$xzEeM78iOa0QxisIHV.uuOANC/XZ/7vz3HSXlJH.ABWowvsiLaa/K', 'STUDENT', true, true)
 ON CONFLICT (email) DO NOTHING;
 
 -- Create test institution user (password: institution123)

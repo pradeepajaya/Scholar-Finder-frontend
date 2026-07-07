@@ -60,6 +60,7 @@ import {
   STUDENT_ID_KEY,
   studentProfileCache,
   tokenService,
+  type ApplicationDocumentDto,
   type StudentApplicationResponse,
   type StudentProfileResponse,
 } from "@/services/api";
@@ -95,6 +96,24 @@ interface AppliedScholarship {
   nextUpdate: string;
   requiredAction: string;
   documents: string[];
+  submittedDocuments: ApplicationDocumentDto[];
+  applicantName: string;
+  applicantEmail: string;
+  applicantPhone: string;
+  currentEducation: string;
+  intendedLevel: string;
+  fieldOfStudy: string;
+  alStream: string;
+  alResults: string;
+  zScore: string;
+  gpa: string;
+  englishTest: string;
+  englishScore: string;
+  householdIncome: string;
+  achievements: string;
+  qualificationSummary: string;
+  coverLetter: string;
+  matchPercentage?: number;
 }
 
 export function UserProfile({ onNavigate }: UserProfileProps) {
@@ -154,6 +173,36 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
     Math.round(backendProfileCompletion * 0.75 + documentCompletion),
   );
   const allDocsUploaded = uploadedCount === totalDocs;
+
+  const loadAppliedScholarships = async (
+    studentUserId: number,
+    shouldUpdate: () => boolean = () => true,
+  ) => {
+    setIsApplicationsLoading(true);
+    setApplicationsError("");
+
+    try {
+      const response = await scholarshipApi.getStudentApplications(studentUserId);
+      if (!shouldUpdate()) return;
+
+      if (response.success && response.data) {
+        setAppliedScholarships(
+          response.data.map(mapStudentApplicationToAppliedScholarship),
+        );
+        return;
+      }
+
+      throw new Error(response.message || "Failed to load applications");
+    } catch (err: any) {
+      if (!shouldUpdate()) return;
+      setAppliedScholarships([]);
+      setApplicationsError(err?.message || "Could not load applications");
+    } finally {
+      if (shouldUpdate()) {
+        setIsApplicationsLoading(false);
+      }
+    }
+  };
 
   useEffect(() => {
     const studentUserId = resolveStudentUserId();
@@ -249,30 +298,7 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
         }
       });
 
-    scholarshipApi
-      .getStudentApplications(studentUserId)
-      .then((response) => {
-        if (!isActive) return;
-
-        if (response.success && response.data) {
-          setAppliedScholarships(
-            response.data.map(mapStudentApplicationToAppliedScholarship),
-          );
-          return;
-        }
-
-        throw new Error(response.message || "Failed to load applications");
-      })
-      .catch((err: any) => {
-        if (!isActive) return;
-        setAppliedScholarships([]);
-        setApplicationsError(err?.message || "Could not load applications");
-      })
-      .finally(() => {
-        if (isActive) {
-          setIsApplicationsLoading(false);
-        }
-      });
+    loadAppliedScholarships(studentUserId, () => isActive);
 
     scholarshipApi
       .getStudentDocuments(studentUserId)
@@ -343,6 +369,14 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
     } catch (error) {
       console.error("Failed to refresh scholarship before applying:", error);
     }
+  };
+
+  const handleApplicationSubmitted = () => {
+    const studentUserId = resolveStudentUserId();
+    if (studentUserId) {
+      loadAppliedScholarships(studentUserId);
+    }
+    setActiveTab("applied");
   };
 
   const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1265,18 +1299,18 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                         className="p-4 border border-slate-200 rounded-lg"
                       >
                         <div className="flex items-start justify-between gap-4 mb-2">
-                          <div>
-                            <h4 className="font-semibold text-slate-900">
+                          <div className="min-w-0">
+                            <h4 className="break-words font-semibold text-slate-900">
                               {scholarship.name}
                             </h4>
-                            <p className="text-sm text-slate-600">
+                            <p className="break-words text-sm text-slate-600">
                               {scholarship.provider}
                             </p>
                           </div>
                           <Badge
-                            className={getApplicationStatusClass(
+                            className={`${getApplicationStatusClass(
                               scholarship.status,
-                            )}
+                            )} flex-shrink-0 whitespace-nowrap`}
                           >
                             {getApplicationStatusLabel(scholarship.status)}
                           </Badge>
@@ -1284,12 +1318,46 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                         <p className="text-sm text-slate-600 mb-3">
                           Applied on: {formatSavedDate(scholarship.appliedDate)}
                         </p>
+                        <div className="mb-4 grid gap-3 rounded-lg bg-slate-50 p-3 text-sm sm:grid-cols-3">
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-500">Reference</p>
+                            <p className="break-words text-slate-900">
+                              {scholarship.referenceCode}
+                            </p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-500">Applicant</p>
+                            <p className="break-words text-slate-900">
+                              {scholarship.applicantName || "Not specified"}
+                            </p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-500">Match</p>
+                            <p className="text-slate-900">
+                              {formatApplicationMatch(scholarship.matchPercentage)}
+                            </p>
+                          </div>
+                        </div>
+                        {scholarship.submittedDocuments.length > 0 && (
+                          <div className="mb-4 flex flex-wrap gap-2">
+                            {scholarship.submittedDocuments.map((document, index) => (
+                              <Badge
+                                key={`${getApplicationDocumentKey(document)}-${index}`}
+                                variant="secondary"
+                                className="max-w-full whitespace-normal break-words px-2.5 py-1 text-left"
+                              >
+                                <FileText className="mr-1.5 h-3.5 w-3.5 flex-shrink-0" />
+                                {formatApplicationDocument(document)}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => setTrackedApplication(scholarship)}
                         >
-                          Track Application
+                          View Application Details
                         </Button>
                       </div>
                     ))}
@@ -1445,6 +1513,7 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
         scholarship={applicationScholarship}
         open={isApplicationOpen}
         onOpenChange={setIsApplicationOpen}
+        onApplicationSubmitted={handleApplicationSubmitted}
       />
       <Dialog
         open={trackedApplication !== null}
@@ -1454,133 +1523,239 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
           }
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-hidden p-0">
           {trackedApplication && (
             <>
-              <DialogHeader>
-                <DialogTitle className="text-2xl leading-tight">
-                  {trackedApplication.name}
-                </DialogTitle>
-                <DialogDescription>
-                  {trackedApplication.provider} - Reference{" "}
-                  {trackedApplication.referenceCode}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-6">
-                <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-500">
-                      Current status
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-slate-900">
-                      {getApplicationStatusLabel(trackedApplication.status)}
-                    </p>
+              <DialogHeader className="border-b border-slate-200 bg-white px-6 py-5 pr-14">
+                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <DialogTitle className="break-words text-2xl leading-tight text-slate-950">
+                      {trackedApplication.name}
+                    </DialogTitle>
+                    <DialogDescription className="mt-2 break-words text-sm text-slate-600">
+                      {trackedApplication.provider} - {trackedApplication.referenceCode}
+                    </DialogDescription>
                   </div>
                   <Badge
-                    className={getApplicationStatusClass(
+                    className={`${getApplicationStatusClass(
                       trackedApplication.status,
-                    )}
+                    )} w-fit flex-shrink-0 whitespace-nowrap`}
                   >
                     {getApplicationStatusLabel(trackedApplication.status)}
                   </Badge>
                 </div>
+              </DialogHeader>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border border-slate-200 p-3">
-                    <p className="text-xs font-semibold uppercase text-slate-500">
-                      Applied on
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {formatSavedDate(trackedApplication.appliedDate)}
-                    </p>
+              <div className="max-h-[calc(100vh-9rem)] overflow-y-auto px-6 py-5">
+                <div className="space-y-6">
+                  <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
+                    <ApplicationDetailField
+                      label="Status"
+                      value={getApplicationStatusLabel(trackedApplication.status)}
+                      compact
+                    />
+                    <ApplicationDetailField
+                      label="Applied on"
+                      value={formatSavedDate(trackedApplication.appliedDate)}
+                      compact
+                    />
+                    <ApplicationDetailField
+                      label="Last updated"
+                      value={formatSavedDate(trackedApplication.lastUpdated)}
+                      compact
+                    />
                   </div>
-                  <div className="rounded-lg border border-slate-200 p-3">
-                    <p className="text-xs font-semibold uppercase text-slate-500">
-                      Last updated
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {formatSavedDate(trackedApplication.lastUpdated)}
-                    </p>
-                  </div>
-                </div>
 
-                <div>
-                  <h3 className="mb-3 font-semibold text-slate-900">
-                    Application timeline
-                  </h3>
-                  <div className="space-y-3">
-                    {getApplicationTrackingSteps(trackedApplication).map(
-                      (step) => (
-                        <div key={step.title} className="flex gap-3">
+                  <ApplicationSection title="Applicant">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <ApplicationDetailField
+                        label="Applicant"
+                        value={trackedApplication.applicantName}
+                      />
+                      <ApplicationDetailField
+                        label="Email"
+                        value={trackedApplication.applicantEmail}
+                      />
+                      <ApplicationDetailField
+                        label="Phone"
+                        value={trackedApplication.applicantPhone}
+                      />
+                      <ApplicationDetailField
+                        label="Household income"
+                        value={trackedApplication.householdIncome}
+                      />
+                    </div>
+                  </ApplicationSection>
+
+                  <ApplicationSection title="Education and match">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <ApplicationDetailField
+                        label="Current education"
+                        value={trackedApplication.currentEducation}
+                      />
+                      <ApplicationDetailField
+                        label="Intended level"
+                        value={trackedApplication.intendedLevel}
+                      />
+                      <ApplicationDetailField
+                        label="Field of study"
+                        value={trackedApplication.fieldOfStudy}
+                      />
+                      <ApplicationDetailField
+                        label="A/L stream"
+                        value={trackedApplication.alStream}
+                      />
+                      <ApplicationDetailField
+                        label="A/L results"
+                        value={trackedApplication.alResults}
+                      />
+                      <ApplicationDetailField
+                        label="Z-score"
+                        value={trackedApplication.zScore}
+                      />
+                      <ApplicationDetailField
+                        label="GPA / average"
+                        value={trackedApplication.gpa}
+                      />
+                      <ApplicationDetailField
+                        label="Match"
+                        value={formatApplicationMatch(
+                          trackedApplication.matchPercentage,
+                        )}
+                      />
+                      <ApplicationDetailField
+                        label="English test"
+                        value={trackedApplication.englishTest}
+                      />
+                      <ApplicationDetailField
+                        label="English score"
+                        value={trackedApplication.englishScore}
+                      />
+                    </div>
+                  </ApplicationSection>
+
+                  {(trackedApplication.qualificationSummary ||
+                    trackedApplication.coverLetter ||
+                    trackedApplication.achievements) && (
+                    <ApplicationSection title="Submitted statements">
+                      <div className="space-y-3">
+                        {trackedApplication.qualificationSummary && (
+                          <ApplicationTextBlock
+                            label="Qualification summary"
+                            value={trackedApplication.qualificationSummary}
+                          />
+                        )}
+                        {trackedApplication.coverLetter && (
+                          <ApplicationTextBlock
+                            label="Cover letter / personal statement"
+                            value={trackedApplication.coverLetter}
+                          />
+                        )}
+                        {trackedApplication.achievements && (
+                          <ApplicationTextBlock
+                            label="Achievements and special circumstances"
+                            value={trackedApplication.achievements}
+                          />
+                        )}
+                      </div>
+                    </ApplicationSection>
+                  )}
+
+                  <ApplicationSection title="Application timeline">
+                    <div className="space-y-3">
+                      {getApplicationTrackingSteps(trackedApplication).map(
+                        (step) => (
+                          <div key={step.title} className="flex gap-3">
+                            <div
+                              className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
+                                step.isRejected
+                                  ? "bg-red-100 text-red-700"
+                                  : step.isActive
+                                  ? "bg-blue-100 text-blue-700"
+                                  : step.isComplete
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-slate-100 text-slate-400"
+                              }`}
+                            >
+                              {step.isRejected ? (
+                                <XCircle className="h-4 w-4" />
+                              ) : step.isComplete ? (
+                                <CheckCircle2 className="h-4 w-4" />
+                              ) : (
+                                <Clock className="h-4 w-4" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1 border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
+                              <p className="break-words font-medium text-slate-900">
+                                {step.title}
+                              </p>
+                              <p className="mt-1 break-words text-sm text-slate-600">
+                                {step.description}
+                              </p>
+                            </div>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </ApplicationSection>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="min-w-0 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                      <p className="text-sm font-semibold text-blue-950">
+                        Next update
+                      </p>
+                      <p className="mt-1 break-words text-sm text-blue-900">
+                        {trackedApplication.nextUpdate}
+                      </p>
+                    </div>
+                    <div className="min-w-0 rounded-lg border border-orange-200 bg-orange-50 p-4">
+                      <p className="text-sm font-semibold text-orange-950">
+                        Required action
+                      </p>
+                      <p className="mt-1 break-words text-sm text-orange-900">
+                        {trackedApplication.requiredAction}
+                      </p>
+                    </div>
+                  </div>
+
+                  <ApplicationSection title="Submitted documents">
+                    {trackedApplication.submittedDocuments.length > 0 ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {trackedApplication.submittedDocuments.map((document, index) => (
                           <div
-                            className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
-                              step.isRejected
-                                ? "bg-red-100 text-red-700"
-                                : step.isActive
-                                ? "bg-blue-100 text-blue-700"
-                                : step.isComplete
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-slate-100 text-slate-400"
-                            }`}
+                            key={`${getApplicationDocumentKey(document)}-${index}`}
+                            className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3"
                           >
-                            {step.isRejected ? (
-                              <XCircle className="h-4 w-4" />
-                            ) : step.isComplete ? (
-                              <CheckCircle2 className="h-4 w-4" />
-                            ) : (
-                              <Clock className="h-4 w-4" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1 border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
-                            <p className="font-medium text-slate-900">
-                              {step.title}
+                            <p className="break-words text-sm font-semibold text-slate-900">
+                              {document.requirementName ||
+                                document.documentName ||
+                                "Submitted document"}
                             </p>
-                            <p className="mt-1 text-sm text-slate-600">
-                              {step.description}
+                            <p className="mt-1 break-words text-sm text-slate-600">
+                              {formatApplicationDocument(document)}
                             </p>
                           </div>
-                        </div>
-                      ),
+                        ))}
+                      </div>
+                    ) : trackedApplication.documents.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {trackedApplication.documents.map((document) => (
+                          <Badge
+                            key={document}
+                            variant="secondary"
+                            className="max-w-full whitespace-normal break-words px-3 py-1 text-left"
+                          >
+                            <FileText className="mr-1.5 h-3.5 w-3.5 flex-shrink-0" />
+                            {document}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-600">
+                        No documents were attached to this application.
+                      </p>
                     )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                    <p className="text-sm font-semibold text-blue-950">
-                      Next update
-                    </p>
-                    <p className="mt-1 text-sm text-blue-900">
-                      {trackedApplication.nextUpdate}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-                    <p className="text-sm font-semibold text-orange-950">
-                      Required action
-                    </p>
-                    <p className="mt-1 text-sm text-orange-900">
-                      {trackedApplication.requiredAction}
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="mb-3 font-semibold text-slate-900">
-                    Submitted documents
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {trackedApplication.documents.map((document) => (
-                      <Badge
-                        key={document}
-                        variant="secondary"
-                        className="px-3 py-1"
-                      >
-                        <FileText className="mr-1.5 h-3.5 w-3.5" />
-                        {document}
-                      </Badge>
-                    ))}
-                  </div>
+                  </ApplicationSection>
                 </div>
               </div>
             </>
@@ -1601,6 +1776,86 @@ function formatSavedDate(date?: string) {
     month: "short",
     year: "numeric",
   });
+}
+
+function formatApplicationMatch(value?: number) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${Math.round(value)}%`
+    : "Not available";
+}
+
+function getApplicationDocumentKey(document: ApplicationDocumentDto) {
+  return [
+    document.requirementName,
+    document.documentId,
+    document.fileName,
+    document.documentName,
+  ]
+    .filter(Boolean)
+    .join("-");
+}
+
+function formatApplicationDocument(document: ApplicationDocumentDto) {
+  const name = document.documentName || document.requirementName;
+  if (document.fileName && name && document.fileName !== name) {
+    return `${name} (${document.fileName})`;
+  }
+  return document.fileName || name || "Submitted document";
+}
+
+function ApplicationDetailField({
+  label,
+  value,
+  compact = false,
+}: {
+  label: string;
+  value?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={`min-w-0 overflow-hidden rounded-lg ${
+        compact ? "bg-transparent p-0" : "border border-slate-200 bg-white p-3"
+      }`}
+    >
+      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-slate-900">
+        {value?.trim() || "Not specified"}
+      </p>
+    </div>
+  );
+}
+
+function ApplicationSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
+      <h3 className="mb-3 break-words font-semibold text-slate-900">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function ApplicationTextBlock({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <p className="break-words text-sm font-semibold text-slate-900">{label}</p>
+      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+        {value}
+      </p>
+    </div>
+  );
 }
 
 function ProfileField({
@@ -1791,6 +2046,24 @@ function mapStudentApplicationToAppliedScholarship(
     nextUpdate: getApplicationNextUpdate(status),
     requiredAction: getApplicationRequiredAction(status),
     documents: application.requiredDocuments || [],
+    submittedDocuments: application.submittedDocuments || [],
+    applicantName: application.applicantName || "",
+    applicantEmail: application.applicantEmail || "",
+    applicantPhone: application.applicantPhone || "",
+    currentEducation: application.currentEducation || "",
+    intendedLevel: application.intendedLevel || "",
+    fieldOfStudy: application.fieldOfStudy || "",
+    alStream: application.alStream || "",
+    alResults: application.alResults || "",
+    zScore: application.zScore || "",
+    gpa: application.gpa || "",
+    englishTest: application.englishTest || "",
+    englishScore: application.englishScore || "",
+    householdIncome: application.householdIncome || "",
+    achievements: application.achievements || "",
+    qualificationSummary: application.qualificationSummary || "",
+    coverLetter: application.coverLetter || "",
+    matchPercentage: application.matchPercentage,
   };
 }
 

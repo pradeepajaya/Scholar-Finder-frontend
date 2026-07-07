@@ -4,7 +4,8 @@ import com.scholarfinder.content.dto.TagDto;
 import com.scholarfinder.content.entity.Tag;
 import com.scholarfinder.content.repository.TagRepository;
 import jakarta.persistence.EntityNotFoundException;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -98,7 +99,7 @@ public class TagService {
     public List<TagDto> getAllTags() {
         return tagRepository.findAll()
             .stream()
-            .map(this::mapToDto)
+            .map(tag -> mapToDto(requireTag(tag)))
             .collect(Collectors.toList());
     }
 
@@ -110,7 +111,7 @@ public class TagService {
         return tagRepository.findPopular()
             .stream()
             .limit(limit)
-            .map(this::mapToDto)
+            .map(tag -> mapToDto(requireTag(tag)))
             .collect(Collectors.toList());
     }
 
@@ -121,7 +122,7 @@ public class TagService {
     public List<TagDto> searchTags(String query) {
         return tagRepository.search(query)
             .stream()
-            .map(this::mapToDto)
+            .map(tag -> mapToDto(requireTag(tag)))
             .collect(Collectors.toList());
     }
 
@@ -141,7 +142,7 @@ public class TagService {
      */
     public TagDto getOrCreateTag(String name) {
         return tagRepository.findByNameIgnoreCase(name)
-            .map(this::mapToDto)
+            .map(tag -> mapToDto(requireTag(tag)))
             .orElseGet(() -> {
                 TagDto dto = new TagDto();
                 dto.setName(name);
@@ -205,11 +206,17 @@ public class TagService {
         return name.trim();
     }
 
-    @NonNull
-    private Long requireId(Long id) {
+    private @NonNull Long requireId(@Nullable Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Tag id is required");
         }
         return id;
+    }
+
+    private @NonNull Tag requireTag(@Nullable Tag tag) {
+        if (tag == null) {
+            throw new IllegalArgumentException("Tag is required");
+        }
+        return tag;
     }
 }

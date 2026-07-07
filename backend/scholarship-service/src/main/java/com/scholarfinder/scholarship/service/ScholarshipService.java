@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -222,12 +223,14 @@ public class ScholarshipService {
      */
     private void sortMatches(List<ScholarshipMatchDto> matches, String sortBy) {
         Comparator<ScholarshipMatchDto> comparator = switch (sortBy) {
-            case "MATCH_ASC" -> Comparator.comparing(ScholarshipMatchDto::getMatchPercentage);
+            case "MATCH_ASC" -> Comparator.comparing(
+                (ScholarshipMatchDto s) -> s.getMatchPercentage() != null ? s.getMatchPercentage() : BigDecimal.ZERO);
             case "DEADLINE_ASC" -> Comparator.comparing(
                 s -> s.getApplicationDeadline() != null ? s.getApplicationDeadline() : LocalDate.MAX);
             case "DEADLINE_DESC" -> Comparator.comparing(
                 (ScholarshipMatchDto s) -> s.getApplicationDeadline() != null ? s.getApplicationDeadline() : LocalDate.MIN).reversed();
-            default -> Comparator.comparing(ScholarshipMatchDto::getMatchPercentage).reversed(); // MATCH_DESC
+            default -> Comparator.comparing(
+                (ScholarshipMatchDto s) -> s.getMatchPercentage() != null ? s.getMatchPercentage() : BigDecimal.ZERO).reversed(); // MATCH_DESC
         };
         matches.sort(comparator);
     }

@@ -1,11 +1,14 @@
 package com.scholarfinder.auth.controller;
 
+import com.scholarfinder.auth.dto.request.ForgotPasswordRequest;
 import com.scholarfinder.auth.dto.request.LoginRequest;
 import com.scholarfinder.auth.dto.request.RefreshTokenRequest;
 import com.scholarfinder.auth.dto.request.RegisterRequest;
+import com.scholarfinder.auth.dto.request.ResetPasswordRequest;
 import com.scholarfinder.auth.dto.request.StudentAccountRecoveryRequest;
 import com.scholarfinder.auth.dto.response.ApiResponse;
 import com.scholarfinder.auth.dto.response.AuthResponse;
+import com.scholarfinder.auth.dto.response.ForgotPasswordResponse;
 import com.scholarfinder.auth.entity.User;
 import com.scholarfinder.auth.service.AuthService;
 import jakarta.validation.Valid;
@@ -45,6 +48,23 @@ public class AuthController {
         log.info("Login request for email: {}", request.getEmail());
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(ApiResponse.success("Login successful", response));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<ForgotPasswordResponse>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request) {
+        log.info("Password reset request for email: {}", request.getEmail());
+        ForgotPasswordResponse response = authService.forgotPassword(request);
+        return ResponseEntity.ok(ApiResponse.success(
+                "If an active account exists for this email, a password reset code has been sent.",
+                response
+        ));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Password reset successful", null));
     }
 
     @PostMapping("/students/recover-account")

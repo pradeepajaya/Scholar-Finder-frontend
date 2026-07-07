@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Building2, Mail, Lock, Eye, EyeOff, ArrowLeft, Users, FileText, BarChart3, AlertCircle, Loader2 } from 'lucide-react';
+import { PasswordResetDialog } from './PasswordResetDialog';
 import { authApi, tokenService } from '../services/api';
 
 interface InstitutionLoginProps {
@@ -14,16 +15,20 @@ interface InstitutionLoginProps {
 const DEMO_INSTITUTION_EMAIL = 'colombo@uoc.lk';
 const DEMO_INSTITUTION_PASSWORD = 'uoc';
 const DEMO_INSTITUTION_USER_ID = 4;
+const REMEMBERED_INSTITUTION_EMAIL_KEY = 'scholar_finder_institution_login_email';
 
 export function InstitutionLogin({ onLogin, onBack }: InstitutionLoginProps) {
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(
+    () => !!localStorage.getItem(REMEMBERED_INSTITUTION_EMAIL_KEY),
+  );
+  const [isResetOpen, setIsResetOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [credentials, setCredentials] = useState({
-    email: '',
+  const [credentials, setCredentials] = useState(() => ({
+    email: localStorage.getItem(REMEMBERED_INSTITUTION_EMAIL_KEY) ?? '',
     password: '',
-  });
+  }));
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,16 +55,34 @@ export function InstitutionLogin({ onLogin, onBack }: InstitutionLoginProps) {
         throw new Error('Access denied. Please use an institution account.');
       }
 
+      if (rememberMe) {
+        localStorage.setItem(REMEMBERED_INSTITUTION_EMAIL_KEY, normalizedEmail);
+      } else {
+        localStorage.removeItem(REMEMBERED_INSTITUTION_EMAIL_KEY);
+      }
       onLogin();
     } catch (err) {
       if (isDemoInstitutionLogin) {
-        tokenService.setToken('demo-institution-session');
-        tokenService.setUser({
-          id: DEMO_INSTITUTION_USER_ID,
-          email: DEMO_INSTITUTION_EMAIL,
-          role: 'INSTITUTION',
-          isVerified: true,
-        });
+        tokenService.setAuthSession(
+          {
+            accessToken: 'demo-institution-session',
+            refreshToken: 'demo-institution-refresh',
+            tokenType: 'Bearer',
+            expiresIn: 0,
+            user: {
+              id: DEMO_INSTITUTION_USER_ID,
+              email: DEMO_INSTITUTION_EMAIL,
+              role: 'INSTITUTION',
+              isVerified: true,
+            },
+          },
+          rememberMe,
+        );
+        if (rememberMe) {
+          localStorage.setItem(REMEMBERED_INSTITUTION_EMAIL_KEY, normalizedEmail);
+        } else {
+          localStorage.removeItem(REMEMBERED_INSTITUTION_EMAIL_KEY);
+        }
         onLogin();
         return;
       }
@@ -231,9 +254,13 @@ export function InstitutionLogin({ onLogin, onBack }: InstitutionLoginProps) {
                   />
                   <span className="text-sm text-slate-600">Remember me</span>
                 </label>
-                <a href="#" className="text-sm text-purple-600 hover:text-purple-700 font-medium">
+                <button
+                  type="button"
+                  onClick={() => setIsResetOpen(true)}
+                  className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+                >
                   Forgot password?
-                </a>
+                </button>
               </div>
 
               <Button
@@ -288,6 +315,13 @@ export function InstitutionLogin({ onLogin, onBack }: InstitutionLoginProps) {
           </Card>
         </div>
       </div>
+
+      <PasswordResetDialog
+        open={isResetOpen}
+        onOpenChange={setIsResetOpen}
+        defaultEmail={credentials.email}
+        theme="purple"
+      />
     </div>
   );
 }

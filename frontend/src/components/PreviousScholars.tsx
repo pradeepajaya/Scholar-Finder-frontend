@@ -25,26 +25,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
-import apiClient from "../services/api";
+import { contentApi, TestimonialDto } from "../services/api";
 import { matchesSearch } from "@/utils/search";
 
-interface Testimonial {
-  id: number;
-  scholarName: string | null;
-  scholarshipName: string;
-  yearCompleted: number | null;
-  fieldOfStudy: string | null;
-  university: string | null;
-  testimonialText: string;
-  rating: number | null;
-  isAnonymous: boolean;
-  isFeatured: boolean;
-  status: string;
-  createdAt: string;
-}
+const MIN_TESTIMONIAL_LENGTH = 100;
+const MAX_TESTIMONIAL_LENGTH = 5000;
 
 export function PreviousScholars() {
-  const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
+  const [testimonials, setTestimonials] = useState<TestimonialDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -63,7 +51,7 @@ export function PreviousScholars() {
   useEffect(() => {
     const fetchTestimonials = async () => {
       try {
-        const payload = await apiClient.get<Testimonial[]>("/testimonials");
+        const payload = await contentApi.getTestimonials();
         setTestimonials(payload.data ?? []);
       } catch (error) {
         console.error("Failed to fetch testimonials:", error);
@@ -82,10 +70,36 @@ export function PreviousScholars() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const testimonialText = formData.testimonial.trim();
+    if (testimonialText.length < MIN_TESTIMONIAL_LENGTH) {
+      window.alert(
+        `Please write at least ${MIN_TESTIMONIAL_LENGTH} characters for your success story.`,
+      );
+      return;
+    }
+    if (testimonialText.length > MAX_TESTIMONIAL_LENGTH) {
+      window.alert(
+        `Please keep your success story under ${MAX_TESTIMONIAL_LENGTH} characters.`,
+      );
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const yearCompleted = Number.parseInt(formData.year, 10);
+      await contentApi.submitTestimonial({
+        scholarName: formData.name.trim(),
+        submitterEmail: formData.email.trim().toLowerCase(),
+        scholarshipName: formData.scholarship.trim(),
+        yearCompleted: Number.isNaN(yearCompleted) ? undefined : yearCompleted,
+        fieldOfStudy: formData.field.trim(),
+        university: formData.university.trim(),
+        testimonialText,
+        rating: 5,
+        isAnonymous: formData.isAnonymous,
+      });
 
       setIsDialogOpen(false);
       window.alert("Success story submitted for admin review.");
@@ -100,8 +114,12 @@ export function PreviousScholars() {
         isAnonymous: false,
         testimonial: "",
       });
-    } catch {
-      window.alert("Failed to submit your story. Please try again.");
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to submit your story. Please try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -158,8 +176,9 @@ export function PreviousScholars() {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <p className="text-sm text-blue-900">
                     <strong>Note:</strong> All submissions are reviewed by our
-                    admin team to ensure quality and authenticity. You will
-                    receive an email notification once your story is approved.
+                    admin team to ensure quality and authenticity. Approved
+                    stories appear on this page. If your story is rejected, we
+                    will send the reason to your email address.
                   </p>
                 </div>
 
@@ -242,6 +261,8 @@ export function PreviousScholars() {
                     <Input
                       id="year"
                       type="number"
+                      min={1900}
+                      max={2100}
                       required
                       value={formData.year}
                       onChange={(e) =>
@@ -295,6 +316,8 @@ export function PreviousScholars() {
                   <Textarea
                     id="testimonial"
                     required
+                    minLength={MIN_TESTIMONIAL_LENGTH}
+                    maxLength={MAX_TESTIMONIAL_LENGTH}
                     value={formData.testimonial}
                     onChange={(e) =>
                       handleInputChange("testimonial", e.target.value)
@@ -302,8 +325,18 @@ export function PreviousScholars() {
                     placeholder="Share your scholarship journey, what it meant to you, and the impact it had on your career..."
                     className="mt-1.5 min-h-[150px]"
                   />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Minimum 100 characters - be specific about your experience
+                  <p
+                    className={`text-xs mt-1 ${
+                      formData.testimonial.trim().length <
+                      MIN_TESTIMONIAL_LENGTH
+                        ? "text-amber-700"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {formData.testimonial.trim().length}/
+                    {MAX_TESTIMONIAL_LENGTH} characters. Minimum{" "}
+                    {MIN_TESTIMONIAL_LENGTH} characters - be specific about
+                    your experience
                   </p>
                 </div>
 

@@ -48,6 +48,10 @@ jwt:
   expiration: 86400000  # 24 hours in milliseconds
   refresh-expiration: 604800000  # 7 days in milliseconds
 
+app:
+  notifications:
+    base-url: ${NOTIFICATION_SERVICE_URL:http://localhost:8085}
+
 # Management Endpoints
 management:
   endpoints:
@@ -80,3 +84,7 @@ eureka:
   client:
     service-url:
       defaultZone: http://eureka:eureka123@discovery-service:8761/eureka/
+
+app:
+  notifications:
+    base-url: ${NOTIFICATION_SERVICE_URL:http://notification-service:8085}

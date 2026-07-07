@@ -370,3 +370,6 @@ WHERE NOT EXISTS (
     WHERE existing.student_id = seeded.student_id
       AND existing.scholarship_id = seeded.scholarship_id
 );
+
+create column applications ( int id, string name, boolean status) in scholarship; 
+

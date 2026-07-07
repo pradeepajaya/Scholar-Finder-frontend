@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { 
   Users, 
   Building2, 
   GraduationCap, 
+  Award,
   FileText, 
   Settings, 
   LogOut,
@@ -27,9 +29,10 @@ import { AdminInstitutions } from './admin/AdminInstitutions';
 import { AdminScholarships } from './admin/AdminScholarships';
 import { AdminStudents } from './admin/AdminStudents';
 import { AdminContent } from './admin/AdminContent';
+import { AdminSuccessStories } from './admin/AdminSuccessStories';
 import { AdminSettings } from './admin/AdminSettings';
 import { AdminAnnouncements } from './admin/AdminAnnouncements';
-import { AdminAlertDto, notificationApi } from '../services/api';
+import { AdminAlertDto, contentApi, notificationApi, TestimonialDto } from '../services/api';
 
 const SEEN_ADMIN_ALERT_IDS_KEY = 'scholar_finder_seen_admin_alert_ids';
 
@@ -61,12 +64,23 @@ export function AdminPortal({ onLogout }: AdminPortalProps) {
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [alertsError, setAlertsError] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [pendingStories, setPendingStories] = useState<TestimonialDto[]>([]);
+  const [isLoadingPendingStories, setIsLoadingPendingStories] = useState(false);
+  const [storyActionId, setStoryActionId] = useState<number | null>(null);
+  const [successStoryFocusId, setSuccessStoryFocusId] = useState<number | null>(null);
+  const pendingStoryCount = pendingStories.length;
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: TrendingUp },
     { id: 'institutions', label: 'Institutions', icon: Building2 },
     { id: 'scholarships', label: 'Scholarships', icon: GraduationCap },
     { id: 'students', label: 'Students', icon: Users },
+    {
+      id: 'success-stories',
+      label: 'Story Reviews',
+      icon: Award,
+      badge: pendingStoryCount,
+    },
     { id: 'announcements', label: 'Announcements', icon: Megaphone },
     { id: 'content', label: 'Content', icon: FileText },
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -75,13 +89,25 @@ export function AdminPortal({ onLogout }: AdminPortalProps) {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <AdminDashboard />;
+        return (
+          <AdminDashboard
+            onOpenStoryReviews={() => setActiveTab('success-stories')}
+            onPendingStoryChange={loadPendingStoryCount}
+          />
+        );
       case 'institutions':
         return <AdminInstitutions />;
       case 'scholarships':
         return <AdminScholarships />;
       case 'students':
         return <AdminStudents />;
+      case 'success-stories':
+        return (
+          <AdminSuccessStories
+            focusStoryId={successStoryFocusId}
+            onReviewChange={loadPendingStoryCount}
+          />
+        );
       case 'announcements':
         return <AdminAnnouncements />;
       case 'content':
@@ -109,11 +135,28 @@ export function AdminPortal({ onLogout }: AdminPortalProps) {
     }
   }, []);
 
+  const loadPendingStoryCount = useCallback(async () => {
+    setIsLoadingPendingStories(true);
+    try {
+      const response = await contentApi.getAllTestimonials('PENDING');
+      setPendingStories(response.data ?? []);
+    } catch {
+      setPendingStories([]);
+    } finally {
+      setIsLoadingPendingStories(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadAlerts();
+    loadPendingStoryCount();
     const intervalId = window.setInterval(loadAlerts, 60000);
-    return () => window.clearInterval(intervalId);
-  }, [loadAlerts]);
+    const storyIntervalId = window.setInterval(loadPendingStoryCount, 60000);
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearInterval(storyIntervalId);
+    };
+  }, [loadAlerts, loadPendingStoryCount]);
 
   useEffect(() => {
     if (!isAlertsOpen || alerts.length === 0) {
@@ -154,6 +197,38 @@ export function AdminPortal({ onLogout }: AdminPortalProps) {
       await onLogout();
     } finally {
       setIsLoggingOut(false);
+    }
+  };
+
+  const handleReviewAlert = (alert: AdminAlertDto) => {
+    if (!isSuccessStoryAlert(alert)) {
+      return;
+    }
+
+    setSuccessStoryFocusId(alert.referenceId ?? null);
+    setActiveTab('success-stories');
+    setIsAlertsOpen(false);
+    setIsSidebarOpen(false);
+  };
+
+  const handleAcceptPendingStory = async (story: TestimonialDto) => {
+    setStoryActionId(story.id);
+    try {
+      await contentApi.approveTestimonial(story.id, {
+        reviewedBy: 'Admin',
+      });
+      setPendingStories((current) =>
+        current.filter((item) => item.id !== story.id),
+      );
+      toast.success('Success story accepted and published');
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to accept success story',
+      );
+    } finally {
+      setStoryActionId(null);
     }
   };
 
@@ -234,7 +309,11 @@ export function AdminPortal({ onLogout }: AdminPortalProps) {
                   ) : (
                     <div className="divide-y divide-slate-100">
                       {alerts.map((alert) => (
-                        <AdminAlertItem key={alert.id} alert={alert} />
+                        <AdminAlertItem
+                          key={alert.id}
+                          alert={alert}
+                          onReviewAlert={handleReviewAlert}
+                        />
                       ))}
                     </div>
                   )}
@@ -285,6 +364,7 @@ export function AdminPortal({ onLogout }: AdminPortalProps) {
           <nav className="p-4 space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
+              const badge = 'badge' in item ? item.badge ?? 0 : 0;
               return (
                 <button
                   key={item.id}
@@ -302,7 +382,12 @@ export function AdminPortal({ onLogout }: AdminPortalProps) {
                   `}
                 >
                   <Icon className="w-5 h-5" />
-                  <span>{item.label}</span>
+                  <span className="flex-1 text-left">{item.label}</span>
+                  {badge > 0 && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-700">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -311,6 +396,76 @@ export function AdminPortal({ onLogout }: AdminPortalProps) {
 
         {/* Main Content */}
         <main className="flex-1 p-6 lg:p-8">
+          {(pendingStories.length > 0 || isLoadingPendingStories) && (
+            <section className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Award className="h-5 w-5 text-amber-700" />
+                    <h2 className="font-semibold text-slate-900">
+                      Pending Success Story Reviews
+                    </h2>
+                    <Badge className="bg-amber-100 text-amber-800">
+                      {pendingStoryCount} Waiting
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Accept submitted student stories here, or open the full review queue.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="border-amber-300 bg-white"
+                  onClick={() => setActiveTab('success-stories')}
+                >
+                  Review All
+                </Button>
+              </div>
+
+              {isLoadingPendingStories && pendingStories.length === 0 ? (
+                <div className="mt-4 flex items-center gap-2 text-sm text-slate-600">
+                  <Loader2 className="h-4 w-4 animate-spin text-amber-700" />
+                  Loading pending stories...
+                </div>
+              ) : (
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  {pendingStories.slice(0, 2).map((story) => (
+                    <div
+                      key={story.id}
+                      className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-white p-4 lg:flex-row lg:items-start lg:justify-between"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-slate-900">
+                          {story.isAnonymous
+                            ? 'Anonymous Scholar'
+                            : story.scholarName || 'Scholar'}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {story.scholarshipName}
+                          {story.university ? ` - ${story.university}` : ''}
+                        </p>
+                        <p className="mt-2 line-clamp-2 text-sm leading-5 text-slate-600">
+                          {story.testimonialText}
+                        </p>
+                      </div>
+                      <Button
+                        className="bg-green-400 text-black hover:bg-green-500"
+                        onClick={() => handleAcceptPendingStory(story)}
+                        disabled={storyActionId === story.id}
+                      >
+                        {storyActionId === story.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle className="mr-2 h-4 w-4" />
+                        )}
+                        Accept & Publish
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
           {renderContent()}
         </main>
       </div>
@@ -326,7 +481,13 @@ export function AdminPortal({ onLogout }: AdminPortalProps) {
   );
 }
 
-function AdminAlertItem({ alert }: { alert: AdminAlertDto }) {
+function AdminAlertItem({
+  alert,
+  onReviewAlert,
+}: {
+  alert: AdminAlertDto;
+  onReviewAlert: (alert: AdminAlertDto) => void;
+}) {
   const isError = alert.severity === 'ERROR';
   const isWarning = alert.severity === 'WARNING';
   const Icon = isError ? AlertCircle : isWarning ? Clock : CheckCircle;
@@ -341,6 +502,7 @@ function AdminAlertItem({ alert }: { alert: AdminAlertDto }) {
     ? 'bg-amber-100 text-amber-700'
     : 'bg-emerald-100 text-emerald-700';
   const message = alert.errorMessage || alert.message || 'No details available';
+  const canReviewSuccessStory = isSuccessStoryAlert(alert);
 
   return (
     <div className="flex gap-3 px-4 py-3">
@@ -375,8 +537,27 @@ function AdminAlertItem({ alert }: { alert: AdminAlertDto }) {
             <span className="max-w-full truncate">{alert.recipientEmail}</span>
           )}
         </div>
+
+        {canReviewSuccessStory && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-3 h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
+            onClick={() => onReviewAlert(alert)}
+          >
+            Review / Accept
+          </Button>
+        )}
       </div>
     </div>
+  );
+}
+
+function isSuccessStoryAlert(alert: AdminAlertDto) {
+  return (
+    alert.referenceType?.toUpperCase() === 'TESTIMONIAL' ||
+    alert.notificationType?.toUpperCase().startsWith('SUCCESS_STORY') === true
   );
 }
 

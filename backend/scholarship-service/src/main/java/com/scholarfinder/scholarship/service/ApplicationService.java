@@ -3,6 +3,7 @@ package com.scholarfinder.scholarship.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.scholarfinder.scholarship.dto.ApplicationDocumentDto;
 import com.scholarfinder.scholarship.dto.ApplicationResponse;
 import com.scholarfinder.scholarship.dto.ApplicationSubmitRequest;
 import com.scholarfinder.scholarship.dto.InstitutionApplicationDto;
@@ -33,6 +34,8 @@ import java.util.stream.Collectors;
 public class ApplicationService {
 
     private static final TypeReference<Map<String, Object>> APPLICATION_DOCUMENTS_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<ApplicationDocumentDto>> APPLICATION_DOCUMENT_LIST_TYPE =
+        new TypeReference<>() {};
 
     private final ApplicationRepository applicationRepository;
     private final ScholarshipRepository scholarshipRepository;
@@ -218,6 +221,7 @@ public class ApplicationService {
         return applications.stream().map(app -> {
             Scholarship scholarship = scholarshipRepository.findById(app.getScholarshipId()).orElse(null);
             Map<String, Object> docs = readApplicationDocuments(app);
+            Map<String, Object> qualifications = readQualifications(docs);
 
             return StudentApplicationDto.builder()
                 .applicationId(app.getId())
@@ -236,7 +240,26 @@ public class ApplicationService {
                 .appliedAt(app.getCreatedAt())
                 .updatedAt(app.getUpdatedAt())
                 .matchPercentage(app.getMatchScore() != null ? app.getMatchScore().doubleValue() : null)
-                .requiredDocuments(scholarship != null ? scholarship.getRequiredDocuments() : null)
+                .requiredDocuments(scholarship != null
+                    ? scholarship.getRequiredDocuments()
+                    : readRequiredDocuments(docs))
+                .applicantName(stringValue(qualifications.get("fullName")))
+                .applicantEmail(stringValue(qualifications.get("email")))
+                .applicantPhone(stringValue(qualifications.get("phone")))
+                .currentEducation(stringValue(qualifications.get("currentEducation")))
+                .intendedLevel(stringValue(qualifications.get("intendedLevel")))
+                .fieldOfStudy(stringValue(qualifications.get("fieldOfStudy")))
+                .alStream(stringValue(qualifications.get("alStream")))
+                .alResults(stringValue(qualifications.get("alResults")))
+                .zScore(stringValue(qualifications.get("zScore")))
+                .gpa(stringValue(qualifications.get("gpa")))
+                .englishTest(stringValue(qualifications.get("englishTest")))
+                .englishScore(stringValue(qualifications.get("englishScore")))
+                .householdIncome(stringValue(qualifications.get("householdIncome")))
+                .achievements(stringValue(qualifications.get("achievements")))
+                .qualificationSummary(app.getStatementOfPurpose())
+                .coverLetter(app.getCoverLetter())
+                .submittedDocuments(readSubmittedDocuments(docs))
                 .build();
         }).collect(Collectors.toList());
     }
@@ -268,6 +291,31 @@ public class ApplicationService {
         return Collections.emptyMap();
     }
 
+    private List<ApplicationDocumentDto> readSubmittedDocuments(Map<String, Object> docs) {
+        Object documents = docs.get("documents");
+        if (documents == null) {
+            return Collections.emptyList();
+        }
+
+        try {
+            return objectMapper.convertValue(documents, APPLICATION_DOCUMENT_LIST_TYPE);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to parse submitted application documents: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    private String[] readRequiredDocuments(Map<String, Object> docs) {
+        Object requiredDocuments = docs.get("requiredDocuments");
+        if (requiredDocuments instanceof List<?> values) {
+            return values.stream()
+                .map(this::stringValue)
+                .filter(value -> value != null && !value.isBlank())
+                .toArray(String[]::new);
+        }
+        return null;
+    }
+
     private String firstPresent(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -278,6 +326,9 @@ public class ApplicationService {
     }
 
     private String stringValue(Object value) {
-        return value instanceof String stringValue ? stringValue : null;
+        if (value instanceof String stringValue) {
+            return stringValue;
+        }
+        return value != null ? String.valueOf(value) : null;
     }
 }

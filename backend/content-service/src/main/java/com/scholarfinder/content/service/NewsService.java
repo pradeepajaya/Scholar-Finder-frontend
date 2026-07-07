@@ -12,7 +12,8 @@ import com.scholarfinder.content.repository.CategoryRepository;
 import com.scholarfinder.content.repository.NewsRepository;
 import com.scholarfinder.content.repository.TagRepository;
 import jakarta.persistence.EntityNotFoundException;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -121,7 +121,7 @@ public class NewsService {
     public List<NewsDto> getFeaturedNews(int limit) {
         return newsRepository.findFeatured(PageRequest.of(0, limit))
             .stream()
-            .map(this::mapToDto)
+            .map(news -> mapToDto(requireNews(news)))
             .collect(Collectors.toList());
     }
 
@@ -132,7 +132,7 @@ public class NewsService {
     public List<NewsDto> getBreakingNews() {
         return newsRepository.findBreaking()
             .stream()
-            .map(this::mapToDto)
+            .map(news -> mapToDto(requireNews(news)))
             .collect(Collectors.toList());
     }
 
@@ -175,7 +175,7 @@ public class NewsService {
     public List<NewsDto> getRecentNews(int limit) {
         return newsRepository.findRecent(PageRequest.of(0, limit))
             .stream()
-            .map(this::mapToDto)
+            .map(news -> mapToDto(requireNews(news)))
             .collect(Collectors.toList());
     }
 
@@ -342,7 +342,7 @@ public class NewsService {
 
     private PagedResponse<NewsDto> createPagedResponse(Page<News> page) {
         List<NewsDto> content = page.getContent().stream()
-            .map(this::mapToDto)
+            .map(news -> mapToDto(requireNews(news)))
             .collect(Collectors.toList());
 
         return new PagedResponse<>(
@@ -375,16 +375,17 @@ public class NewsService {
         return slug;
     }
 
-    @NonNull
-    private Long requireId(Long id, String label) {
+    private @NonNull Long requireId(@Nullable Long id, String label) {
         if (id == null) {
             throw new IllegalArgumentException(label + " id is required");
         }
         return id;
     }
 
-    @NonNull
-    private News requireNews(News news) {
-        return Objects.requireNonNull(news, "News is required");
+    private @NonNull News requireNews(@Nullable News news) {
+        if (news == null) {
+            throw new IllegalArgumentException("News is required");
+        }
+        return news;
     }
 }
