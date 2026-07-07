@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -40,12 +40,16 @@ export function NewsPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const filteredArticles = newsArticles.filter((article) =>
-    matchesSearch(searchQuery, [
-      article.title,
-      article.summary,
-      article.category?.name || "News",
-    ]),
+  const filteredArticles = useMemo(
+    () =>
+      newsArticles.filter((article) =>
+        matchesSearch(searchQuery, [
+          article.title,
+          article.summary,
+          article.category?.name || "News",
+        ]),
+      ),
+    [newsArticles, searchQuery],
   );
 
   return (
@@ -109,7 +113,7 @@ export function NewsPage() {
               key={article.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
+              transition={{ duration: 0.35, delay: Math.min(index * 0.03, 0.18) }}
             >
               <Card className="overflow-hidden h-full flex flex-col hover:shadow-lg transition-shadow bg-[rgba(15,98,231,0.22)]">
                 <div className="relative h-48 overflow-hidden">

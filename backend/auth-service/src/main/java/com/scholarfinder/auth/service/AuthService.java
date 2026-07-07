@@ -193,7 +193,7 @@ public class AuthService {
     public ForgotPasswordResponse forgotPassword(ForgotPasswordRequest request) {
         String email = request.getEmail().trim().toLowerCase();
 
-        return userRepository.findByEmail(email)
+        return userRepository.findByEmailIgnoreCase(email)
                 .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
                 .map(user -> {
                     String resetToken = generateResetCode();
@@ -203,9 +203,10 @@ public class AuthService {
                     user.setResetPasswordExpires(expiresAt);
                     userRepository.save(user);
 
-                    passwordResetEmailService.sendResetCode(user.getEmail(), resetToken, expiresAt);
+                    String recipientEmail = user.getEmail().trim();
+                    passwordResetEmailService.sendResetCode(recipientEmail, resetToken, expiresAt);
 
-                    log.info("Password reset code generated and emailed for {}", user.getEmail());
+                    log.info("Password reset code generated and emailed for {}", recipientEmail);
                     return ForgotPasswordResponse.builder()
                             .expiresAt(expiresAt)
                             .build();

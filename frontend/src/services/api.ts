@@ -3,6 +3,11 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 export const STUDENT_ID_KEY = 'scholar_finder_student_id';
 export const STUDENT_PROFILE_CACHE_KEY = 'scholar_finder_student_profile';
 
+const API_CACHE_PREFIX = 'scholar_finder_api_cache:';
+const PUBLIC_CONTENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const SCHOLARSHIP_CACHE_TTL_MS = 2 * 60 * 1000;
+const MATCH_CACHE_TTL_MS = 5 * 60 * 1000;
+
 // Types
 export interface LoginRequest {
   email: string;
@@ -612,6 +617,68 @@ const setAuthValue = (key: string, value: string): void => {
   otherStorage.removeItem(key);
 };
 
+interface ApiCacheEntry<T> {
+  expiresAt: number;
+  response: ApiResponse<T>;
+}
+
+const apiCache = {
+  get<T>(key: string): ApiResponse<T> | null {
+    try {
+      const raw = sessionStorage.getItem(`${API_CACHE_PREFIX}${key}`);
+      if (!raw) return null;
+
+      const entry = JSON.parse(raw) as ApiCacheEntry<T>;
+      if (!entry.expiresAt || Date.now() > entry.expiresAt) {
+        sessionStorage.removeItem(`${API_CACHE_PREFIX}${key}`);
+        return null;
+      }
+
+      return entry.response;
+    } catch {
+      sessionStorage.removeItem(`${API_CACHE_PREFIX}${key}`);
+      return null;
+    }
+  },
+
+  set<T>(key: string, response: ApiResponse<T>, ttlMs: number): void {
+    try {
+      const entry: ApiCacheEntry<T> = {
+        expiresAt: Date.now() + ttlMs,
+        response,
+      };
+      sessionStorage.setItem(`${API_CACHE_PREFIX}${key}`, JSON.stringify(entry));
+    } catch {
+      // Ignore storage quota/private-mode failures; the network path still works.
+    }
+  },
+
+  invalidate(keyPrefixes: string[]): void {
+    try {
+      for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+        const storageKey = sessionStorage.key(index);
+        if (!storageKey?.startsWith(API_CACHE_PREFIX)) continue;
+
+        const cacheKey = storageKey.slice(API_CACHE_PREFIX.length);
+        if (keyPrefixes.some((prefix) => cacheKey.startsWith(prefix))) {
+          sessionStorage.removeItem(storageKey);
+        }
+      }
+    } catch {
+      // Cache invalidation should never block user actions.
+    }
+  },
+};
+
+const cacheKeyFor = (
+  method: 'GET' | 'POST',
+  endpoint: string,
+  body?: unknown,
+): string => {
+  const serializedBody = body === undefined ? '' : `:${JSON.stringify(body)}`;
+  return `${method}:${endpoint}${serializedBody}`;
+};
+
 export const tokenService = {
   getToken: (): string | null => getStoredAuthValue(TOKEN_KEY),
   
@@ -897,11 +964,46 @@ class ApiClient {
     return this.request<T>(endpoint);
   }
 
+  async getCached<T>(
+    endpoint: string,
+    ttlMs: number,
+  ): Promise<ApiResponse<T>> {
+    const cacheKey = cacheKeyFor('GET', endpoint);
+    const cached = apiCache.get<T>(cacheKey);
+    if (cached) return cached;
+
+    const response = await this.get<T>(endpoint);
+    if (response.success) {
+      apiCache.set(cacheKey, response, ttlMs);
+    }
+    return response;
+  }
+
   async post<T>(endpoint: string, data: unknown): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  async postCached<T>(
+    endpoint: string,
+    data: unknown,
+    ttlMs: number,
+  ): Promise<ApiResponse<T>> {
+    const cacheKey = cacheKeyFor('POST', endpoint, data);
+    const cached = apiCache.get<T>(cacheKey);
+    if (cached) return cached;
+
+    const response = await this.post<T>(endpoint, data);
+    if (response.success) {
+      apiCache.set(cacheKey, response, ttlMs);
+    }
+    return response;
+  }
+
+  invalidateCache(keyPrefixes: string[]): void {
+    apiCache.invalidate(keyPrefixes);
   }
 
   async put<T>(endpoint: string, data: unknown): Promise<ApiResponse<T>> {
@@ -937,8 +1039,11 @@ export const authApi = {
 };
 
 export const scholarshipApi = {
-  upsertStudentProfile: (request: StudentProfileRequest) =>
-    apiClient.post<StudentProfileResponse>('/scholarships/students', request),
+  upsertStudentProfile: async (request: StudentProfileRequest) => {
+    const response = await apiClient.post<StudentProfileResponse>('/scholarships/students', request);
+    apiClient.invalidateCache(['POST:/scholarships/matches']);
+    return response;
+  },
   getStudentProfile: (userId: number) =>
     apiClient.get<StudentProfileResponse>(`/scholarships/students/${userId}`),
   getAllStudentProfiles: () =>
@@ -961,19 +1066,25 @@ export const scholarshipApi = {
       `/scholarships/institutions/by-user/${institutionUserId}/applications`,
     ),
   getScholarships: () =>
-    apiClient.get<ScholarshipDto[]>('/scholarships'),
+    apiClient.getCached<ScholarshipDto[]>('/scholarships', SCHOLARSHIP_CACHE_TTL_MS),
   getScholarship: (id: number) =>
     apiClient.get<ScholarshipDto>(`/scholarships/${id}`),
   getAllScholarships: () =>
     apiClient.get<ScholarshipDto[]>('/scholarships/admin/all'),
-  updateScholarship: (id: number, request: ScholarshipUpdateRequest) =>
-    apiClient.put<ScholarshipDto>(`/scholarships/admin/${id}`, request),
-  deleteScholarship: (id: number) =>
-    apiClient.delete<void>(`/scholarships/admin/${id}`),
+  updateScholarship: async (id: number, request: ScholarshipUpdateRequest) => {
+    const response = await apiClient.put<ScholarshipDto>(`/scholarships/admin/${id}`, request);
+    apiClient.invalidateCache(['GET:/scholarships', 'POST:/scholarships/matches']);
+    return response;
+  },
+  deleteScholarship: async (id: number) => {
+    const response = await apiClient.delete<void>(`/scholarships/admin/${id}`);
+    apiClient.invalidateCache(['GET:/scholarships', 'POST:/scholarships/matches']);
+    return response;
+  },
   submitApplication: (scholarshipId: number, request: ApplicationSubmitRequest) =>
     apiClient.post<ApplicationResponse>(`/scholarships/${scholarshipId}/apply`, request),
   getMatches: (request: MatchRequest) =>
-    apiClient.post<MatchResponse>('/scholarships/matches', request),
+    apiClient.postCached<MatchResponse>('/scholarships/matches', request, MATCH_CACHE_TTL_MS),
 };
 
 export const notificationApi = {
@@ -991,55 +1102,106 @@ export const notificationApi = {
 
 export const contentApi = {
   getNews: (page = 0, size = 10) =>
-    apiClient.get<PagedResponse<NewsDto>>(`/news?page=${page}&size=${size}`),
+    apiClient.getCached<PagedResponse<NewsDto>>(
+      `/news?page=${page}&size=${size}`,
+      PUBLIC_CONTENT_CACHE_TTL_MS,
+    ),
   getAllNews: (page = 0, size = 100) =>
     apiClient.get<PagedResponse<NewsDto>>(`/news/admin?page=${page}&size=${size}`),
   getNewsById: (id: number) =>
     apiClient.get<NewsDto>(`/news/${id}`),
-  createNews: (request: NewsRequest) =>
-    apiClient.post<NewsDto>('/news', request),
-  updateNews: (id: number, request: NewsRequest) =>
-    apiClient.put<NewsDto>(`/news/${id}`, request),
-  deleteNews: (id: number) =>
-    apiClient.delete<void>(`/news/${id}`),
-  publishNews: (id: number) =>
-    apiClient.post<NewsDto>(`/news/${id}/publish`, {}),
-  archiveNews: (id: number) =>
-    apiClient.post<NewsDto>(`/news/${id}/archive`, {}),
-  draftNews: (id: number) =>
-    apiClient.post<NewsDto>(`/news/${id}/draft`, {}),
+  createNews: async (request: NewsRequest) => {
+    const response = await apiClient.post<NewsDto>('/news', request);
+    apiClient.invalidateCache(['GET:/news']);
+    return response;
+  },
+  updateNews: async (id: number, request: NewsRequest) => {
+    const response = await apiClient.put<NewsDto>(`/news/${id}`, request);
+    apiClient.invalidateCache(['GET:/news']);
+    return response;
+  },
+  deleteNews: async (id: number) => {
+    const response = await apiClient.delete<void>(`/news/${id}`);
+    apiClient.invalidateCache(['GET:/news']);
+    return response;
+  },
+  publishNews: async (id: number) => {
+    const response = await apiClient.post<NewsDto>(`/news/${id}/publish`, {});
+    apiClient.invalidateCache(['GET:/news']);
+    return response;
+  },
+  archiveNews: async (id: number) => {
+    const response = await apiClient.post<NewsDto>(`/news/${id}/archive`, {});
+    apiClient.invalidateCache(['GET:/news']);
+    return response;
+  },
+  draftNews: async (id: number) => {
+    const response = await apiClient.post<NewsDto>(`/news/${id}/draft`, {});
+    apiClient.invalidateCache(['GET:/news']);
+    return response;
+  },
 
   getBlogPosts: (page = 0, size = 10) =>
-    apiClient.get<PagedResponse<BlogPostDto>>(`/blogs?page=${page}&size=${size}`),
+    apiClient.getCached<PagedResponse<BlogPostDto>>(
+      `/blogs?page=${page}&size=${size}`,
+      PUBLIC_CONTENT_CACHE_TTL_MS,
+    ),
   getAllBlogPosts: (page = 0, size = 100) =>
     apiClient.get<PagedResponse<BlogPostDto>>(`/blogs/admin?page=${page}&size=${size}`),
   getBlogPostById: (id: number) =>
     apiClient.get<BlogPostDto>(`/blogs/${id}`),
-  createBlogPost: (request: BlogPostRequest) =>
-    apiClient.post<BlogPostDto>('/blogs', request),
-  updateBlogPost: (id: number, request: BlogPostRequest) =>
-    apiClient.put<BlogPostDto>(`/blogs/${id}`, request),
-  deleteBlogPost: (id: number) =>
-    apiClient.delete<void>(`/blogs/${id}`),
-  publishBlogPost: (id: number) =>
-    apiClient.post<BlogPostDto>(`/blogs/${id}/publish`, {}),
-  archiveBlogPost: (id: number) =>
-    apiClient.post<BlogPostDto>(`/blogs/${id}/archive`, {}),
-  draftBlogPost: (id: number) =>
-    apiClient.post<BlogPostDto>(`/blogs/${id}/draft`, {}),
+  createBlogPost: async (request: BlogPostRequest) => {
+    const response = await apiClient.post<BlogPostDto>('/blogs', request);
+    apiClient.invalidateCache(['GET:/blogs']);
+    return response;
+  },
+  updateBlogPost: async (id: number, request: BlogPostRequest) => {
+    const response = await apiClient.put<BlogPostDto>(`/blogs/${id}`, request);
+    apiClient.invalidateCache(['GET:/blogs']);
+    return response;
+  },
+  deleteBlogPost: async (id: number) => {
+    const response = await apiClient.delete<void>(`/blogs/${id}`);
+    apiClient.invalidateCache(['GET:/blogs']);
+    return response;
+  },
+  publishBlogPost: async (id: number) => {
+    const response = await apiClient.post<BlogPostDto>(`/blogs/${id}/publish`, {});
+    apiClient.invalidateCache(['GET:/blogs']);
+    return response;
+  },
+  archiveBlogPost: async (id: number) => {
+    const response = await apiClient.post<BlogPostDto>(`/blogs/${id}/archive`, {});
+    apiClient.invalidateCache(['GET:/blogs']);
+    return response;
+  },
+  draftBlogPost: async (id: number) => {
+    const response = await apiClient.post<BlogPostDto>(`/blogs/${id}/draft`, {});
+    apiClient.invalidateCache(['GET:/blogs']);
+    return response;
+  },
 
   getTestimonials: () =>
-    apiClient.get<TestimonialDto[]>('/testimonials'),
-  submitTestimonial: (request: TestimonialRequest) =>
-    apiClient.post<TestimonialDto>('/testimonials', request),
+    apiClient.getCached<TestimonialDto[]>('/testimonials', PUBLIC_CONTENT_CACHE_TTL_MS),
+  submitTestimonial: async (request: TestimonialRequest) => {
+    const response = await apiClient.post<TestimonialDto>('/testimonials', request);
+    apiClient.invalidateCache(['GET:/testimonials']);
+    return response;
+  },
   getAllTestimonials: (status?: string) =>
     apiClient.get<TestimonialDto[]>(
       `/testimonials/admin${status ? `?status=${encodeURIComponent(status)}` : ''}`,
     ),
   approveTestimonial: (id: number, request: TestimonialReviewRequest = {}) =>
-    apiClient.post<TestimonialDto>(`/testimonials/admin/${id}/approve`, request),
+    apiClient.post<TestimonialDto>(`/testimonials/admin/${id}/approve`, request).then((response) => {
+      apiClient.invalidateCache(['GET:/testimonials']);
+      return response;
+    }),
   rejectTestimonial: (id: number, request: TestimonialReviewRequest) =>
-    apiClient.post<TestimonialDto>(`/testimonials/admin/${id}/reject`, request),
+    apiClient.post<TestimonialDto>(`/testimonials/admin/${id}/reject`, request).then((response) => {
+      apiClient.invalidateCache(['GET:/testimonials']);
+      return response;
+    }),
 };
 
 export default apiClient;

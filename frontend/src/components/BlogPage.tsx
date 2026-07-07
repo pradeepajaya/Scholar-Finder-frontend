@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -86,18 +86,27 @@ export function BlogPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const filteredPosts = blogPosts.filter((post) =>
-    matchesSearch(searchQuery, [
-      post.title,
-      post.excerpt,
-      post.content,
-      post.authorName,
-      post.category?.name,
-    ]),
+  const filteredPosts = useMemo(
+    () =>
+      blogPosts.filter((post) =>
+        matchesSearch(searchQuery, [
+          post.title,
+          post.excerpt,
+          post.authorName,
+          post.category?.name,
+        ]),
+      ),
+    [blogPosts, searchQuery],
   );
-  
-  const featuredPosts = filteredPosts.filter((post) => post.isFeatured);
-  const regularPosts = filteredPosts.filter((post) => !post.isFeatured);
+
+  const featuredPosts = useMemo(
+    () => filteredPosts.filter((post) => post.isFeatured),
+    [filteredPosts],
+  );
+  const regularPosts = useMemo(
+    () => filteredPosts.filter((post) => !post.isFeatured),
+    [filteredPosts],
+  );
 
   const getCategoryColor = (categoryName?: string) => {
     if (categoryName && categoryColors[categoryName]) {
@@ -191,7 +200,7 @@ export function BlogPage() {
                     key={post.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: index * 0.1 }}
+                    transition={{ duration: 0.35, delay: Math.min(index * 0.03, 0.18) }}
                     className="group"
                   >
                     <Card className="overflow-hidden h-full hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-300">
@@ -302,7 +311,7 @@ export function BlogPage() {
                     key={post.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: index * 0.1 }}
+                    transition={{ duration: 0.35, delay: Math.min(index * 0.03, 0.18) }}
                     className="group"
                   >
                     <Card className="overflow-hidden h-full flex flex-col hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border hover:border-slate-300">

@@ -13,7 +13,7 @@ import {
   Send,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
@@ -125,17 +125,21 @@ export function PreviousScholars() {
     }
   };
 
-  const filteredTestimonials = testimonials.filter((testimonial) =>
-    matchesSearch(searchQuery, [
-      testimonial.scholarName,
-      testimonial.scholarshipName,
-      testimonial.yearCompleted,
-      testimonial.fieldOfStudy,
-      testimonial.university,
-      testimonial.testimonialText,
-      testimonial.rating,
-      testimonial.isAnonymous ? "Anonymous Scholar" : "",
-    ]),
+  const filteredTestimonials = useMemo(
+    () =>
+      testimonials.filter((testimonial) =>
+        matchesSearch(searchQuery, [
+          testimonial.scholarName,
+          testimonial.scholarshipName,
+          testimonial.yearCompleted,
+          testimonial.fieldOfStudy,
+          testimonial.university,
+          testimonial.testimonialText,
+          testimonial.rating,
+          testimonial.isAnonymous ? "Anonymous Scholar" : "",
+        ]),
+      ),
+    [testimonials, searchQuery],
   );
 
   return (
@@ -450,7 +454,7 @@ export function PreviousScholars() {
               key={testimonial.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
+              transition={{ duration: 0.35, delay: Math.min(index * 0.03, 0.18) }}
             >
               <Card className="overflow-hidden h-full hover:shadow-lg transition-shadow">
                 <div className="p-6 bg-[rgba(15,140,252,0.12)]">
