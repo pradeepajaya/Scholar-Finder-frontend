@@ -12,11 +12,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class StudentProfileService {
+
+    private static final int MAX_PROFILE_PICTURE_LENGTH = 1_500_000;
 
     private final StudentProfileRepository studentProfileRepository;
     private final ApplicationRepository applicationRepository;
@@ -69,6 +72,19 @@ public class StudentProfileService {
             .orElseThrow(() -> new IllegalArgumentException("Student profile not found"));
 
         return mapProfileToResponse(profile);
+    }
+
+    @Transactional
+    public StudentProfileResponse updateProfilePicture(Long userId, String profilePictureUrl) {
+        StudentProfile profile = studentProfileRepository.findByUserId(userId)
+            .orElseThrow(() -> new IllegalArgumentException("Student profile not found"));
+
+        profile.setProfilePictureUrl(normalizeProfilePicture(profilePictureUrl));
+        profile.setUpdatedAt(LocalDateTime.now());
+
+        StudentProfile saved = studentProfileRepository.save(profile);
+        log.info("Student profile picture updated for userId: {}", saved.getUserId());
+        return mapProfileToResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -206,6 +222,7 @@ public class StudentProfileService {
         profile.setPreferredFields(request.getPreferredFields());
         profile.setScholarshipType(request.getScholarshipType());
         profile.setWillingToReturn(request.getWillingToReturn());
+        profile.setProfilePictureUrl(request.getProfilePictureUrl());
     }
 
     private int calculateProfileCompletion(StudentProfile profile) {
@@ -228,6 +245,32 @@ public class StudentProfileService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private String normalizeProfilePicture(String profilePictureUrl) {
+        if (profilePictureUrl == null || profilePictureUrl.isBlank()) {
+            return null;
+        }
+
+        String value = profilePictureUrl.trim();
+        if (value.length() > MAX_PROFILE_PICTURE_LENGTH) {
+            throw new IllegalArgumentException("Profile picture must be smaller than 1 MB");
+        }
+
+        String lower = value.toLowerCase(Locale.ROOT);
+        boolean isSupportedDataUrl =
+            lower.startsWith("data:image/png;base64,") ||
+            lower.startsWith("data:image/jpeg;base64,") ||
+            lower.startsWith("data:image/jpg;base64,") ||
+            lower.startsWith("data:image/webp;base64,") ||
+            lower.startsWith("data:image/gif;base64,");
+        boolean isRemoteUrl = lower.startsWith("https://") || lower.startsWith("http://");
+
+        if (!isSupportedDataUrl && !isRemoteUrl) {
+            throw new IllegalArgumentException("Profile picture must be a JPG, PNG, WebP, or GIF image");
+        }
+
+        return value;
     }
 
 }

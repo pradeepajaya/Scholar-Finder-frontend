@@ -168,7 +168,7 @@ public class StudentProfile {
     @Column(name = "willing_to_return")
     private String willingToReturn;
 
-    @Column(name = "profile_picture_url")
+    @Column(name = "profile_picture_url", columnDefinition = "TEXT")
     private String profilePictureUrl;
 
     @Column(name = "profile_completion_percentage")

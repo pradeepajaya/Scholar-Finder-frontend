@@ -91,5 +91,6 @@ public class StudentProfileRequest {
     private String scholarshipType;
     private String willingToReturn;
 
+    private String profilePictureUrl;
     private Integer profileCompletionPercentage;
 }

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS auth.users (
     reset_password_token VARCHAR(255),
     reset_password_expires TIMESTAMP,
     last_login TIMESTAMP,
+    profile_picture_url TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -113,7 +114,7 @@ CREATE TABLE IF NOT EXISTS users.student_profiles (
     scholarship_type VARCHAR(50),
     willing_to_return VARCHAR(10),
     
-    profile_picture_url VARCHAR(500),
+    profile_picture_url TEXT,
     profile_completion_percentage INTEGER DEFAULT 0,
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -229,6 +230,12 @@ CREATE TABLE IF NOT EXISTS scholarships.scholarships (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     published_at TIMESTAMP
 );
+
+ALTER TABLE auth.users
+    ADD COLUMN IF NOT EXISTS profile_picture_url TEXT;
+
+ALTER TABLE users.student_profiles
+    ALTER COLUMN profile_picture_url TYPE TEXT;
 
 -- Keep existing local databases aligned when new scholarship detail fields are added.
 ALTER TABLE scholarships.scholarships ADD COLUMN IF NOT EXISTS provider_name VARCHAR(255);

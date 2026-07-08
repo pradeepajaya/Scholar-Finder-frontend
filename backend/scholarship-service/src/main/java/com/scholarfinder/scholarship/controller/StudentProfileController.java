@@ -1,6 +1,7 @@
 package com.scholarfinder.scholarship.controller;
 
 import com.scholarfinder.scholarship.dto.ApiResponse;
+import com.scholarfinder.scholarship.dto.ProfilePictureRequest;
 import com.scholarfinder.scholarship.dto.StudentProfileRequest;
 import com.scholarfinder.scholarship.dto.StudentProfileResponse;
 import com.scholarfinder.scholarship.service.StudentProfileService;
@@ -65,6 +66,23 @@ public class StudentProfileController {
             log.error("Error retrieving student profile: {}", e.getMessage(), e);
             return ResponseEntity.badRequest()
                 .body(ApiResponse.error("Failed to retrieve student profile: " + e.getMessage()));
+        }
+    }
+
+    @PutMapping("/{userId}/profile-picture")
+    public ResponseEntity<ApiResponse<StudentProfileResponse>> updateProfilePicture(
+            @PathVariable Long userId,
+            @RequestBody ProfilePictureRequest request) {
+        try {
+            StudentProfileResponse response = studentProfileService.updateProfilePicture(
+                userId,
+                request.getProfilePictureUrl()
+            );
+            return ResponseEntity.ok(ApiResponse.success(response, "Profile picture updated"));
+        } catch (Exception e) {
+            log.error("Error updating student profile picture: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to update profile picture: " + e.getMessage()));
         }
     }
 }

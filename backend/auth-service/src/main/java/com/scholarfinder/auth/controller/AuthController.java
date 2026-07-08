@@ -2,6 +2,7 @@ package com.scholarfinder.auth.controller;
 
 import com.scholarfinder.auth.dto.request.ForgotPasswordRequest;
 import com.scholarfinder.auth.dto.request.LoginRequest;
+import com.scholarfinder.auth.dto.request.ProfilePictureRequest;
 import com.scholarfinder.auth.dto.request.RefreshTokenRequest;
 import com.scholarfinder.auth.dto.request.RegisterRequest;
 import com.scholarfinder.auth.dto.request.ResetPasswordRequest;
@@ -116,14 +117,35 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<AuthResponse.UserDto>> getCurrentUser(
             @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Authentication is required"));
+        }
         User user = authService.getCurrentUser(userDetails.getUsername());
         AuthResponse.UserDto userDto = AuthResponse.UserDto.builder()
                 .id(user.getId())
                 .email(user.getEmail())
                 .role(user.getRole())
                 .isVerified(user.getIsVerified())
+                .profilePictureUrl(user.getProfilePictureUrl())
                 .build();
         return ResponseEntity.ok(ApiResponse.success("User retrieved successfully", userDto));
+    }
+
+    @PutMapping("/me/profile-picture")
+    public ResponseEntity<ApiResponse<AuthResponse.UserDto>> updateProfilePicture(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Valid @RequestBody ProfilePictureRequest request) {
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Authentication is required"));
+        }
+
+        AuthResponse.UserDto userDto = authService.updateProfilePicture(
+                userDetails.getUsername(),
+                request.getProfilePictureUrl()
+        );
+        return ResponseEntity.ok(ApiResponse.success("Profile picture updated", userDto));
     }
 
     /**

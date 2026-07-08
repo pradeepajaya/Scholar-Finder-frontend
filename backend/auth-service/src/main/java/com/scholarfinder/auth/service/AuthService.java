@@ -38,6 +38,7 @@ public class AuthService {
     private static final int DEFAULT_REFRESH_TOKEN_DAYS = 7;
     private static final int REMEMBER_ME_REFRESH_TOKEN_DAYS = 30;
     private static final int PASSWORD_RESET_TOKEN_MINUTES = 30;
+    private static final int MAX_PROFILE_PICTURE_LENGTH = 1_500_000;
     private static final SecureRandom PASSWORD_RESET_CODE_RANDOM = new SecureRandom();
 
     private final UserRepository userRepository;
@@ -155,8 +156,25 @@ public class AuthService {
             return buildAuthResponse(user, accessToken, refreshToken);
 
         } catch (BadCredentialsException e) {
+            if (hasActivePasswordReset(request.getEmail())) {
+                throw new AuthException(
+                        "Password reset is not complete. Enter the reset code from your email and update your password before signing in."
+                );
+            }
             throw new AuthException("Invalid email or password");
         }
+    }
+
+    private boolean hasActivePasswordReset(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+
+        return userRepository.findByEmailIgnoreCase(email.trim())
+                .filter(user -> user.getResetPasswordToken() != null && !user.getResetPasswordToken().isBlank())
+                .filter(user -> user.getResetPasswordExpires() != null)
+                .filter(user -> LocalDateTime.now().isBefore(user.getResetPasswordExpires()))
+                .isPresent();
     }
 
     @Transactional
@@ -310,8 +328,47 @@ public class AuthService {
     }
 
     public User getCurrentUser(String email) {
-        return userRepository.findByEmail(email)
+        return userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new AuthException("User not found"));
+    }
+
+    @Transactional
+    public AuthResponse.UserDto updateProfilePicture(String email, String profilePictureUrl) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new AuthException("User not found"));
+
+        String normalizedPicture = normalizeProfilePicture(profilePictureUrl);
+        user.setProfilePictureUrl(normalizedPicture);
+        User saved = userRepository.save(user);
+
+        log.info("Profile picture updated for user: {}", saved.getEmail());
+        return buildUserDto(saved);
+    }
+
+    private String normalizeProfilePicture(String profilePictureUrl) {
+        if (profilePictureUrl == null || profilePictureUrl.isBlank()) {
+            return null;
+        }
+
+        String value = profilePictureUrl.trim();
+        if (value.length() > MAX_PROFILE_PICTURE_LENGTH) {
+            throw new AuthException("Profile picture must be smaller than 1 MB");
+        }
+
+        String lower = value.toLowerCase(Locale.ROOT);
+        boolean isSupportedDataUrl =
+                lower.startsWith("data:image/png;base64,") ||
+                lower.startsWith("data:image/jpeg;base64,") ||
+                lower.startsWith("data:image/jpg;base64,") ||
+                lower.startsWith("data:image/webp;base64,") ||
+                lower.startsWith("data:image/gif;base64,");
+        boolean isRemoteUrl = lower.startsWith("https://") || lower.startsWith("http://");
+
+        if (!isSupportedDataUrl && !isRemoteUrl) {
+            throw new AuthException("Profile picture must be a JPG, PNG, WebP, or GIF image");
+        }
+
+        return value;
     }
 
     public boolean validateToken(String token) {
@@ -344,12 +401,17 @@ public class AuthService {
                 .refreshToken(refreshToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtTokenProvider.getJwtExpiration())
-                .user(AuthResponse.UserDto.builder()
-                        .id(user.getId())
-                        .email(user.getEmail())
-                        .role(user.getRole())
-                        .isVerified(user.getIsVerified())
-                        .build())
+                .user(buildUserDto(user))
+                .build();
+    }
+
+    private AuthResponse.UserDto buildUserDto(User user) {
+        return AuthResponse.UserDto.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .role(user.getRole())
+                .isVerified(user.getIsVerified())
+                .profilePictureUrl(user.getProfilePictureUrl())
                 .build();
     }
 }
