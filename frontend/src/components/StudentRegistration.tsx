@@ -487,6 +487,7 @@ export function StudentRegistration({
         data.preferredFields.length > 0 ? data.preferredFields : undefined,
       scholarshipType: normalizeScholarshipType(data.scholarshipType),
       willingToReturn: toOptionalText(data.willingToReturn),
+      profilePictureUrl: currentUser?.profilePictureUrl,
     };
   };
 

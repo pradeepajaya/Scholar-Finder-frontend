@@ -50,6 +50,7 @@ export interface UserDto {
   email: string;
   role: 'STUDENT' | 'INSTITUTION' | 'ADMIN';
   isVerified: boolean;
+  profilePictureUrl?: string;
 }
 
 export interface AuthResponse {
@@ -122,7 +123,12 @@ export interface StudentProfileRequest {
   preferredFields?: string[];
   scholarshipType?: string;
   willingToReturn?: string;
+  profilePictureUrl?: string;
   profileCompletionPercentage?: number;
+}
+
+export interface ProfilePictureRequest {
+  profilePictureUrl?: string;
 }
 
 export interface StudentProfileResponse {
@@ -626,6 +632,12 @@ const setAuthValue = (key: string, value: string): void => {
   otherStorage.removeItem(key);
 };
 
+const notifyUserUpdated = (): void => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('scholarfinder:user-updated'));
+  }
+};
+
 interface ApiCacheEntry<T> {
   expiresAt: number;
   response: ApiResponse<T>;
@@ -702,7 +714,10 @@ export const tokenService = {
     return user ? JSON.parse(user) : null;
   },
   
-  setUser: (user: UserDto): void => setAuthValue(USER_KEY, JSON.stringify(user)),
+  setUser: (user: UserDto): void => {
+    setAuthValue(USER_KEY, JSON.stringify(user));
+    notifyUserUpdated();
+  },
 
   setAuthSession: (auth: AuthResponse, rememberMe = false): void => {
     const storage = rememberMe ? localStorage : sessionStorage;
@@ -714,6 +729,7 @@ export const tokenService = {
     storage.setItem(TOKEN_KEY, auth.accessToken);
     storage.setItem(REFRESH_TOKEN_KEY, auth.refreshToken);
     storage.setItem(USER_KEY, JSON.stringify(auth.user));
+    notifyUserUpdated();
   },
   
   clearTokens: (): void => {
@@ -721,6 +737,7 @@ export const tokenService = {
     clearAuthValues(sessionStorage);
     localStorage.removeItem(STUDENT_ID_KEY);
     localStorage.removeItem(STUDENT_PROFILE_CACHE_KEY);
+    notifyUserUpdated();
   },
   
   isAuthenticated: (): boolean => !!getStoredAuthValue(TOKEN_KEY),
@@ -964,6 +981,21 @@ class ApiClient {
     return this.request<UserDto>('/auth/me');
   }
 
+  async updateProfilePicture(
+    request: ProfilePictureRequest,
+  ): Promise<ApiResponse<UserDto>> {
+    const response = await this.request<UserDto>('/auth/me/profile-picture', {
+      method: 'PUT',
+      body: JSON.stringify(request),
+    });
+
+    if (response.success && response.data) {
+      tokenService.setUser(response.data);
+    }
+
+    return response;
+  }
+
   async verifyEmail(token: string): Promise<ApiResponse<void>> {
     return this.request<void>(`/auth/verify-email?token=${token}`);
   }
@@ -1044,6 +1076,8 @@ export const authApi = {
     apiClient.resetPassword(request),
   logout: () => apiClient.logout(),
   getCurrentUser: () => apiClient.getCurrentUser(),
+  updateProfilePicture: (request: ProfilePictureRequest) =>
+    apiClient.updateProfilePicture(request),
   verifyEmail: (token: string) => apiClient.verifyEmail(token),
 };
 
@@ -1055,6 +1089,19 @@ export const scholarshipApi = {
   },
   getStudentProfile: (userId: number) =>
     apiClient.get<StudentProfileResponse>(`/scholarships/students/${userId}`),
+  updateStudentProfilePicture: async (
+    userId: number,
+    request: ProfilePictureRequest,
+  ) => {
+    const response = await apiClient.put<StudentProfileResponse>(
+      `/scholarships/students/${userId}/profile-picture`,
+      request,
+    );
+    if (response.success && response.data) {
+      studentProfileCache.setProfile(response.data);
+    }
+    return response;
+  },
   getAllStudentProfiles: () =>
     apiClient.get<StudentProfileResponse[]>('/scholarships/students/admin/all'),
   getStudentDocuments: (studentId: number) =>

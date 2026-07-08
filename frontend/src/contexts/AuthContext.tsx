@@ -41,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const response = await authApi.getCurrentUser();
           if (response.success) {
             setUser(response.data);
+            tokenService.setUser(response.data);
           } else {
             tokenService.clearTokens();
           }

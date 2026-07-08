@@ -49,6 +49,7 @@ export function PasswordResetDialog({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [showResetForm, setShowResetForm] = useState(false);
+  const [resetComplete, setResetComplete] = useState(false);
 
   const styles = themeClasses[theme];
   const trimmedToken = token.trim();
@@ -71,6 +72,7 @@ export function PasswordResetDialog({
       setMessage("");
       setError("");
       setShowResetForm(false);
+      setResetComplete(false);
     }
   }, [defaultEmail, open]);
 
@@ -81,13 +83,16 @@ export function PasswordResetDialog({
     setIsRequesting(true);
 
     try {
-      const response = await authApi.forgotPassword({
+      await authApi.forgotPassword({
         email: email.trim().toLowerCase(),
       });
 
       setToken("");
+      setPassword("");
+      setConfirmPassword("");
+      setResetComplete(false);
       setShowResetForm(true);
-      setMessage(response.message || "Check your email for the reset code.");
+      setMessage("Reset code sent. Enter the code and new password below.");
     } catch (err) {
       setError(
         err instanceof Error
@@ -135,7 +140,9 @@ export function PasswordResetDialog({
       setToken("");
       setPassword("");
       setConfirmPassword("");
-      setMessage("Password updated. You can sign in with the new password.");
+      setShowResetForm(false);
+      setResetComplete(true);
+      setMessage("Password updated. Sign in with your new password.");
     } catch (err) {
       setError(
         err instanceof Error
@@ -153,7 +160,11 @@ export function PasswordResetDialog({
         <DialogHeader>
           <DialogTitle>Reset password</DialogTitle>
           <DialogDescription>
-            Enter your account email. We will send a reset code to that address.
+            {resetComplete
+              ? "Your password has been updated."
+              : showResetForm
+                ? "Enter the reset code from your email and choose a new password."
+                : "Enter your account email. We will send a reset code to that address."}
           </DialogDescription>
         </DialogHeader>
 
@@ -171,40 +182,42 @@ export function PasswordResetDialog({
           </Alert>
         )}
 
-        <form onSubmit={handleRequestReset} className="space-y-4">
-          <div>
-            <Label htmlFor="reset-email">Email address</Label>
-            <div className="relative mt-2">
-              <Mail className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-              <Input
-                id="reset-email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                className="h-12 pl-10"
-                required
-                disabled={isRequesting || isResetting}
-              />
+        {!showResetForm && !resetComplete && (
+          <form onSubmit={handleRequestReset} className="space-y-4">
+            <div>
+              <Label htmlFor="reset-email">Email address</Label>
+              <div className="relative mt-2">
+                <Mail className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="reset-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  className="h-12 pl-10"
+                  required
+                  disabled={isRequesting || isResetting}
+                />
+              </div>
             </div>
-          </div>
 
-          <Button
-            type="submit"
-            className={`h-11 w-full text-white shadow-lg ${styles.button}`}
-            disabled={isRequesting || isResetting}
-          >
-            {isRequesting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <KeyRound className="mr-2 h-4 w-4" />
-            )}
-            Send reset code
-          </Button>
-        </form>
+            <Button
+              type="submit"
+              className={`h-11 w-full text-white shadow-lg ${styles.button}`}
+              disabled={isRequesting || isResetting}
+            >
+              {isRequesting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <KeyRound className="mr-2 h-4 w-4" />
+              )}
+              Send reset code
+            </Button>
+          </form>
+        )}
 
         {showResetForm && (
-          <form onSubmit={handleResetPassword} className="space-y-4 border-t border-slate-200 pt-4">
+          <form onSubmit={handleResetPassword} className="space-y-4">
             <div>
               <Label htmlFor="reset-token">Reset code</Label>
               <div className="relative mt-2">
@@ -317,7 +330,34 @@ export function PasswordResetDialog({
               {isResetting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Update password
             </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full"
+              disabled={isResetting}
+              onClick={() => {
+                setToken("");
+                setPassword("");
+                setConfirmPassword("");
+                setMessage("");
+                setError("");
+                setShowResetForm(false);
+              }}
+            >
+              Send another code
+            </Button>
           </form>
+        )}
+
+        {resetComplete && (
+          <Button
+            type="button"
+            className={`h-11 w-full text-white shadow-lg ${styles.button}`}
+            onClick={() => onOpenChange(false)}
+          >
+            Back to sign in
+          </Button>
         )}
       </DialogContent>
     </Dialog>

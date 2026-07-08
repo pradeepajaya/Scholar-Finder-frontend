@@ -56,6 +56,7 @@ import {
   mapBackendScholarship,
 } from "./ScholarshipsPage";
 import {
+  authApi,
   scholarshipApi,
   STUDENT_ID_KEY,
   studentProfileCache,
@@ -77,6 +78,14 @@ interface ProfileData {
 interface UserProfileProps {
   onNavigate?: (page: string) => void;
 }
+
+const PROFILE_PICTURE_MAX_BYTES = 1024 * 1024;
+const PROFILE_PICTURE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
 
 type AppliedScholarshipStatus =
   | "submitted"
@@ -145,6 +154,8 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
   const [isSavedDetailsOpen, setIsSavedDetailsOpen] = useState(false);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
+  const [isProfilePictureSaving, setIsProfilePictureSaving] = useState(false);
+  const [profilePictureError, setProfilePictureError] = useState("");
 
   const [applicationScholarship, setApplicationScholarship] =
     useState<BrowseScholarship | null>(null);
@@ -161,6 +172,7 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [documentViewError, setDocumentViewError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const profilePictureInputRef = useRef<HTMLInputElement>(null);
 
   const uploadedCount = documents.filter((d) => d.status === "uploaded").length;
   const totalDocs = documents.length;
@@ -528,12 +540,120 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
     setIsEditing(false);
   };
 
+  const handleProfilePictureUploadClick = () => {
+    setProfilePictureError("");
+    profilePictureInputRef.current?.click();
+  };
+
+  const handleProfilePictureSelected = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (profilePictureInputRef.current) profilePictureInputRef.current.value = "";
+    if (!file) return;
+
+    if (!PROFILE_PICTURE_TYPES.has(file.type)) {
+      setProfilePictureError("Choose a JPG, PNG, WebP, or GIF image.");
+      return;
+    }
+
+    if (file.size > PROFILE_PICTURE_MAX_BYTES) {
+      setProfilePictureError("Choose an image smaller than 1 MB.");
+      return;
+    }
+
+    try {
+      const profilePictureUrl = await readProfilePictureFile(file);
+      await saveProfilePicture(profilePictureUrl);
+    } catch (error: any) {
+      console.error("Failed to update profile picture", error);
+      setProfilePictureError(
+        error?.message || "Could not update your profile picture.",
+      );
+    }
+  };
+
+  const handleRemoveProfilePicture = async () => {
+    try {
+      await saveProfilePicture("");
+    } catch (error: any) {
+      console.error("Failed to remove profile picture", error);
+      setProfilePictureError(
+        error?.message || "Could not remove your profile picture.",
+      );
+    }
+  };
+
+  const saveProfilePicture = async (profilePictureUrl: string) => {
+    const currentUser = getAuthenticatedStudentUser();
+    if (!currentUser) {
+      setProfilePictureError("Please sign in before updating your picture.");
+      return;
+    }
+
+    setIsProfilePictureSaving(true);
+    setProfilePictureError("");
+
+    try {
+      const authResponse = await authApi.updateProfilePicture({
+        profilePictureUrl: profilePictureUrl || undefined,
+      });
+
+      if (!authResponse.success || !authResponse.data) {
+        throw new Error(authResponse.message || "Failed to save profile picture");
+      }
+
+      const savedPictureUrl = authResponse.data.profilePictureUrl || "";
+      const nextProfile = { ...profile, avatarUrl: savedPictureUrl };
+      setProfile(nextProfile);
+      setEditForm({ ...editForm, avatarUrl: savedPictureUrl });
+
+      if (studentProfile) {
+        const optimisticStudentProfile = {
+          ...studentProfile,
+          profilePictureUrl: savedPictureUrl,
+        };
+        setStudentProfile(optimisticStudentProfile);
+        studentProfileCache.setProfile(optimisticStudentProfile);
+      }
+
+      const studentUserId = resolveStudentUserId();
+      if (studentUserId && studentProfile) {
+        try {
+          const profileResponse = await scholarshipApi.updateStudentProfilePicture(
+            studentUserId,
+            { profilePictureUrl: savedPictureUrl || undefined },
+          );
+
+          if (profileResponse.success && profileResponse.data) {
+            setStudentProfile(profileResponse.data);
+            studentProfileCache.setProfile(profileResponse.data);
+            setProfile(mapStudentProfileToProfileData(profileResponse.data));
+            setEditForm(mapStudentProfileToProfileData(profileResponse.data));
+          }
+        } catch (syncError) {
+          console.warn("Profile picture saved to auth but profile sync failed", syncError);
+        }
+      }
+    } finally {
+      setIsProfilePictureSaving(false);
+    }
+  };
+
   const handleRemoveSavedScholarship = (scholarshipId: number) => {
     setSavedScholarships(removeSavedScholarship(scholarshipId));
   };
 
   return (
     <div className="max-w-6xl mx-auto p-6">
+      <input
+        ref={profilePictureInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={handleProfilePictureSelected}
+      />
+
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-slate-900 mb-2">My Profile</h1>
         <p className="text-slate-600">
@@ -577,6 +697,39 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                         .join("")}
                     </AvatarFallback>
                   </Avatar>
+                  <div className="flex justify-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleProfilePictureUploadClick}
+                      disabled={isProfilePictureSaving}
+                    >
+                      {isProfilePictureSaving ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="mr-2 h-4 w-4" />
+                      )}
+                      Upload photo
+                    </Button>
+                    {editForm.avatarUrl && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRemoveProfilePicture}
+                        disabled={isProfilePictureSaving}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                  {profilePictureError && (
+                    <p className="mt-2 text-xs text-red-600">
+                      {profilePictureError}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-3">
                   <div>
@@ -687,6 +840,39 @@ export function UserProfile({ onNavigate }: UserProfileProps) {
                         .join("")}
                     </AvatarFallback>
                   </Avatar>
+                  <div className="mb-3 flex justify-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleProfilePictureUploadClick}
+                      disabled={isProfilePictureSaving}
+                    >
+                      {isProfilePictureSaving ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="mr-2 h-4 w-4" />
+                      )}
+                      Upload photo
+                    </Button>
+                    {profile.avatarUrl && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRemoveProfilePicture}
+                        disabled={isProfilePictureSaving}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                  {profilePictureError && (
+                    <p className="mb-3 text-xs text-red-600">
+                      {profilePictureError}
+                    </p>
+                  )}
                   <h2 className="text-xl font-bold text-slate-900">
                     {profile.name}
                   </h2>
@@ -1953,8 +2139,23 @@ function mapStudentProfileToProfileData(
     location: location.length > 0 ? location.join(", ") : "Location not specified",
     stream:
       streamParts.length > 0 ? streamParts.join(" - ") : "Academic profile not specified",
-    avatarUrl: profile?.profilePictureUrl || "",
+    avatarUrl: currentUser?.profilePictureUrl || profile?.profilePictureUrl || "",
   };
+}
+
+function readProfilePictureFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Could not read the selected image."));
+      }
+    };
+    reader.onerror = () => reject(new Error("Could not read the selected image."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function getAuthenticatedStudentUser() {

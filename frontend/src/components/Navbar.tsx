@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   GraduationCap,
   Menu,
@@ -8,6 +8,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { tokenService } from "@/services/api";
 
 type Page =
   | "home"
@@ -61,6 +62,23 @@ export function Navbar({
 }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loginDropdownOpen, setLoginDropdownOpen] = useState(false);
+  const [profilePictureUrl, setProfilePictureUrl] = useState(
+    () => tokenService.getUser()?.profilePictureUrl || "",
+  );
+
+  useEffect(() => {
+    const refreshProfilePicture = () => {
+      setProfilePictureUrl(tokenService.getUser()?.profilePictureUrl || "");
+    };
+
+    refreshProfilePicture();
+    window.addEventListener("scholarfinder:user-updated", refreshProfilePicture);
+    return () =>
+      window.removeEventListener(
+        "scholarfinder:user-updated",
+        refreshProfilePicture,
+      );
+  }, [isLoggedIn]);
 
   const handleNavClick = (page: Page) => {
     onNavigate(page);
@@ -222,8 +240,16 @@ export function Navbar({
               <>
                 {/* User Menu when logged in */}
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
-                    <User className="w-4 h-4 text-white" />
+                  <div className="w-8 h-8 overflow-hidden bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+                    {profilePictureUrl ? (
+                      <img
+                        src={profilePictureUrl}
+                        alt="Profile"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <User className="w-4 h-4 text-white" />
+                    )}
                   </div>
                   <span className="text-sm font-medium text-slate-700 capitalize">
                     {userType}
@@ -331,8 +357,16 @@ export function Navbar({
                 ) : (
                   <>
                     <div className="flex items-center gap-3 px-4 py-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
-                        <User className="w-5 h-5 text-white" />
+                      <div className="w-10 h-10 overflow-hidden bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+                        {profilePictureUrl ? (
+                          <img
+                            src={profilePictureUrl}
+                            alt="Profile"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <User className="w-5 h-5 text-white" />
+                        )}
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-900 capitalize">
